@@ -15,6 +15,9 @@ import java.util.UUID;
  */
 public class ToolItem {
 
+    /** Mirror switch command marker: replaced at click time by an interactive mirror picker. */
+    public static final String MIRROR_SWITCH_COMMAND = "@mirror_switch@";
+
     public String id;
     public String name;
     /** Emoji or single character shown as the icon. */
@@ -80,13 +83,10 @@ public class ToolItem {
     }
 
     /** Default tools used on first run. */
-    public static List<ToolItem> defaults() {
-        List<ToolItem> tools = new ArrayList<>();
+    public static List<ToolItem> defaults() {        List<ToolItem> tools = new ArrayList<>();
         tools.add(new ToolItem("同步索引", "⬇", "pkg update"));
         tools.add(new ToolItem("up全部包", "⬆", "pkg upgrade"));
-        tools.add(new ToolItem("轮换源", "🔄",
-            // Rotate apt mirror: official -> tsinghua -> ustc -> aliyun -> official, then refresh index.
-            "sed -i 's|https://packages.termux.dev/apt/termux-main|M0|g; s|https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main|M1|g; s|https://mirrors.ustc.edu.cn/termux/apt/termux-main|M2|g; s|https://mirrors.aliyun.com/termux/apt/termux-main|M3|g; s|M0|https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main|g; s|M1|https://mirrors.ustc.edu.cn/termux/apt/termux-main|g; s|M2|https://mirrors.aliyun.com/termux/apt/termux-main|g; s|M3|https://packages.termux.dev/apt/termux-main|g' $PREFIX/etc/apt/sources.list && grep -oE 'https://[^/ ]+' $PREFIX/etc/apt/sources.list | head -1 && pkg update"));
+        tools.add(new ToolItem("切换源", "🔄", ToolItem.MIRROR_SWITCH_COMMAND));
         tools.add(new ToolItem("进程监视", "📊", "htop"));
         tools.add(new ToolItem("清屏", "🧹", "clear"));
         return tools;

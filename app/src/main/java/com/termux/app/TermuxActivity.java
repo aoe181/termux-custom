@@ -623,6 +623,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         ToolsAdapter adapter = new ToolsAdapter(tools, new ToolsAdapter.OnToolClickListener() {
             @Override
             public void onToolClick(ToolItem tool) {
+                // Interactive mirror picker tool: show selection dialog instead of
+                // writing a command directly.
+                if (ToolItem.MIRROR_SWITCH_COMMAND.equals(tool.command)) {
+                    showMirrorSwitchDialog();
+                    getDrawer().closeDrawers();
+                    return;
+                }
+
                 TerminalSession session = getCurrentSession();
                 boolean sessionBusy = session != null && session.isRunning()
                     // A TUI/fullscreen app (opencode, vim, htop, ...) is active in the
@@ -666,8 +674,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             public boolean onMove(@NonNull RecyclerView recyclerView,
                                   @NonNull RecyclerView.ViewHolder viewHolder,
                                   @NonNull RecyclerView.ViewHolder target) {
-                return mToolsAdapter.moveItem(viewHolder.getBindingAdapterPosition(),
-                    target.getBindingAdapterPosition());
+                return mToolsAdapter.moveItem(viewHolder.getAdapterPosition(),
+                    target.getAdapterPosition());
             }
 
             @Override
@@ -693,12 +701,62 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         });
         itemTouchHelper.attachToRecyclerView(toolsRecyclerView);
         mToolsAdapter.setOnToolDragStarter(itemTouchHelper::startDrag,
-            ViewConfiguration.get(this).getScaledTouchSlop());
+            android.view.ViewConfiguration.get(this).getScaledTouchSlop());
 
         findViewById(R.id.add_tool_button).setOnClickListener(v -> showToolEditDialog(null));
     }
 
     /** Show a dialog to add (null tool) or edit/delete an existing tool. */
+    /** Show a dialog to pick an apt mirror, then switch sources.list and refresh the index. */
+    private void showMirrorSwitchDialog() {
+        // Official -> Tsinghua -> USTC -> Aliyun (per user preference: keep official + tsinghua primary)
+        final String[][] mirrors = {
+            {"官方源 (termux.dev)", "https://packages.termux.dev/apt/termux-main"},
+            {"清华源 (tuna)", "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"},
+            {"中科大源 (ustc)", "https://mirrors.ustc.edu.cn/termux/apt/termux-main"},
+            {"阿里云源 (aliyun)", "https://mirrors.aliyun.com/termux/apt/termux-main"},
+        };
+        String[] names = new String[mirrors.length];
+        for (int i = 0; i < mirrors.length; i++) names[i] = mirrors[i][0];
+
+        // Read the current mirror to mark it in the dialog
+        String current = null;
+        try {
+            java.io.File f = new java.io.File(
+                TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/etc/apt/sources.list");
+            if (f.exists()) {
+                String content = new String(java.nio.file.Files.readAllBytes(f.toPath()),
+                    java.nio.charset.StandardCharsets.UTF_8);
+                java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("https://[^/ ]+/termux/apt/termux-main").matcher(content);
+                if (m.find()) current = m.group();
+            }
+        } catch (Exception ignored) {
+        }
+
+        for (int i = 0; i < names.length; i++) {
+            if (current != null && current.equals(mirrors[i][1])) {
+                names[i] = "✓ " + names[i] + " (当前)";
+            }
+        }
+
+        new AlertDialog.Builder(this)
+            .setTitle(getString(R.string.tools_mirror_switch_title))
+            .setItems(names, (dialog, which) -> {
+                String url = mirrors[which][1];
+                TerminalSession session = getCurrentSession();
+                if (session == null || !session.isRunning()) {
+                    Logger.showToast(this, getString(R.string.tools_no_session), false);
+                    return;
+                }
+                String cmd = "sed -i 's|https://[^/]*/termux/apt/termux-main|" + url + "|g' $PREFIX/etc/apt/sources.list && echo \"已切换到: " + url + "\" && pkg update";
+                session.getEmulator().paste(cmd);
+                session.write("\r");
+            })
+            .setNegativeButton(R.string.tools_cancel, null)
+            .show();
+    }
+
     private void showToolEditDialog(@Nullable ToolItem tool) {
         boolean isNew = tool == null;
         LinearLayout container = new LinearLayout(this);
