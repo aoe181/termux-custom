@@ -141,11 +141,7 @@ public class TermuxSessionsListViewController extends RecyclerView.Adapter<Termu
                     if (which == 0) {
                         mActivity.getTermuxTerminalSessionClient().renameSession(terminalSession);
                     } else if (which == 1) {
-                        if (mActivity.getPreferences().shouldSkipSessionCloseConfirmation()) {
-                            closeSessionNow(terminalSession);
-                        } else {
-                            showSessionCloseConfirmDialog(terminalSession);
-                        }
+                        closeSessionNow(terminalSession);
                     }
                 })
             .setNegativeButton(R.string.tools_cancel, null)
@@ -153,34 +149,29 @@ public class TermuxSessionsListViewController extends RecyclerView.Adapter<Termu
     }
 
     private void closeSessionNow(TerminalSession terminalSession) {
-        com.termux.shared.termux.shell.command.runner.terminal.TermuxSession termuxSession =
-            mActivity.getTermuxService() != null
-                ? mActivity.getTermuxService().getTermuxSessionForTerminalSession(terminalSession)
-                : null;
-        if (termuxSession != null) {
-            termuxSession.killIfExecuting(mActivity, false);
-        } else {
-            terminalSession.finishIfRunning();
-        }
-        // Delay removal: SIGKILL is async and the process may still be alive.
-        // TermuxSession.finish() bails out if isRunning(), so we must wait for
-        // the process to actually die before removing it.
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-            mActivity.getTermuxTerminalSessionClient().removeFinishedSession(terminalSession);
-        }, 300);
-    }
+        com.termux.app.TermuxService service = mActivity.getTermuxService();
+        if (service == null) return;
 
-    private void showSessionCloseConfirmDialog(TerminalSession terminalSession) {
-        new AlertDialog.Builder(mActivity)
-            .setTitle(terminalSession.mSessionName)
-            .setMessage(R.string.title_confirm_kill_process)
-            .setPositiveButton(R.string.action_close_session, (dialog, which) -> closeSessionNow(terminalSession))
-            .setNeutralButton(R.string.tools_close_no_confirm, (dialog, which) -> {
-                mActivity.getPreferences().setSkipSessionCloseConfirmation(true);
-                closeSessionNow(terminalSession);
-            })
-            .setNegativeButton(R.string.tools_cancel, null)
-            .show();
+        // Force-remove bypasses TermuxSession.finish() which returns early when
+        // the execution command is already in "failed" state (after SIGKILL).
+        int index = service.forceRemoveTermuxSession(terminalSession);
+        int size = service.getTermuxSessionsSize();
+
+        mActivity.termuxSessionListNotifyUpdated();
+
+        if (size == 0) {
+            // No sessions left; close the activity.
+            mActivity.finishActivityIfNotFinishing();
+        } else {
+            // Switch to a neighbor session.
+            if (index >= size) index = size - 1;
+            if (index < 0) index = 0;
+            com.termux.shared.termux.shell.command.runner.terminal.TermuxSession next =
+                service.getTermuxSession(index);
+            if (next != null) {
+                mActivity.getTermuxTerminalSessionClient().setCurrentSession(next.getTerminalSession());
+            }
+        }
     }
 
     static class ViewHolder extends RecyclerView.ViewHolder {

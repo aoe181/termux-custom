@@ -635,6 +635,21 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         return index;
     }
 
+    /** Force-remove a session from the list regardless of running state.
+     * Unlike {@link #removeTermuxSession}, this does not call {@code TermuxSession.finish()}
+     * which bails out early when the execution command state is already "failed" (e.g. after
+     * a SIGKILL via killIfExecuting). Returns the index of the removed session or -1. */
+    public synchronized int forceRemoveTermuxSession(TerminalSession sessionToRemove) {
+        int index = getIndexOfSession(sessionToRemove);
+        if (index >= 0) {
+            // Kill if still alive, then remove from list directly.
+            if (sessionToRemove.isRunning())
+                sessionToRemove.finishIfRunning();
+            mShellManager.mTermuxSessions.remove(index);
+        }
+        return index;
+    }
+
     /** Callback received when a {@link TermuxSession} finishes. */
     @Override
     public void onTermuxSessionExited(final TermuxSession termuxSession) {
