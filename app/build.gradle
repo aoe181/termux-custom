@@ -95,6 +95,25 @@ android {
             storePassword 'xrj45yWGLbsO7W0v'
             keyPassword 'xrj45yWGLbsO7W0v'
         }
+        // Custom release signing: CI injects keystore via env vars (see workflow).
+        // Falls back to the debug key when SIGNING_KEYSTORE_BASE64 is absent, so
+        // local builds still work.
+        custom {
+            def ksB64 = System.getenv("SIGNING_KEYSTORE_BASE64")
+            if (ksB64) {
+                def ksFile = file("custom-release.jks")
+                if (!ksFile.exists()) ksFile.bytes = new String(ksB64).decodeBase64()
+                storeFile ksFile
+                storePassword System.getenv("SIGNING_STORE_PASSWORD") ?: "123"
+                keyAlias System.getenv("SIGNING_KEY_ALIAS") ?: "123"
+                keyPassword System.getenv("SIGNING_KEY_PASSWORD") ?: "123"
+            } else {
+                storeFile file('testkey_untrusted.jks')
+                storePassword 'xrj45yWGLbsO7W0v'
+                keyAlias 'alias'
+                keyPassword 'xrj45yWGLbsO7W0v'
+            }
+        }
     }
 
     buildTypes {
@@ -102,6 +121,7 @@ android {
             minifyEnabled true
             shrinkResources false // Reproducible builds
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.custom
         }
 
         debug {
