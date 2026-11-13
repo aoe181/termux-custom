@@ -264,9 +264,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         View content = findViewById(android.R.id.content);
         ViewCompat.setOnApplyWindowInsetsListener(content, (v, insets) -> {
-            android.graphics.Insets sysBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            androidx.core.graphics.Insets sysBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
             mNavBarHeight = sysBars.bottom;
-            // Apply system bar insets as padding for edge-to-edge on Android 15+
             v.setPadding(sysBars.left, sysBars.top, sysBars.right, sysBars.bottom);
             return insets;
         });
