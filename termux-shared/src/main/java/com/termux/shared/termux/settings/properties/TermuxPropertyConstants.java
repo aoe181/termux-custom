@@ -156,6 +156,14 @@ public final class TermuxPropertyConstants {
     /** Defines the key for whether to use fullscreen */
     public static final String KEY_USE_FULLSCREEN =  "fullscreen"; // Default: "fullscreen"
 
+    /** Defines the key for the fullscreen/immersive mode: `no` (default), `status` (hide status bar only),
+     * `immersive` (hide status+nav bars, swipe to reveal transiently) */
+    public static final String KEY_FULL_SCREEN_MODE = "fullscreen-mode"; // Default: "fullscreen-mode"
+    public static final String IVALUE_FULL_SCREEN_MODE_NO = "no";
+    public static final String IVALUE_FULL_SCREEN_MODE_STATUS = "status";
+    public static final String IVALUE_FULL_SCREEN_MODE_IMMERSIVE = "immersive";
+    public static final String DEFAULT_IVALUE_FULL_SCREEN_MODE = IVALUE_FULL_SCREEN_MODE_NO;
+
 
 
     /** Defines the key for whether to use fullscreen workaround */
@@ -428,6 +436,7 @@ public final class TermuxPropertyConstants {
         KEY_DEFAULT_WORKING_DIRECTORY,
         KEY_EXTRA_KEYS,
         KEY_EXTRA_KEYS_STYLE,
+        KEY_FULL_SCREEN_MODE,
         KEY_NIGHT_MODE,
         KEY_SOFT_KEYBOARD_TOGGLE_BEHAVIOUR,
         KEY_VOLUME_KEYS_BEHAVIOUR

@@ -30,6 +30,9 @@ import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.RecyclerView;
@@ -266,6 +269,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         }
 
+        applyFullScreenMode();
+
         setTermuxTerminalViewAndClients();
 
         setTerminalToolbarView(savedInstanceState);
@@ -336,6 +341,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         Logger.logVerbose(LOG_TAG, "onResume");
 
         if (mIsInvalidState) return;
+
+        // Re-apply fullscreen mode in case settings changed while away.
+        applyFullScreenMode();
 
         if (mTermuxTerminalSessionActivityClient != null)
             mTermuxTerminalSessionActivityClient.onResume();
@@ -942,6 +950,34 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         int drawerWidthPx = (int) (250 * density);
         mDrawerEdgeSizePx = Math.min(maxPx, Math.max(minPx, (int) (drawerWidthPx * 0.40f)));
         applyDrawerEdgeSize();
+    }
+
+    /**
+     * Apply the `fullscreen-mode` property:
+     * `no` (default) - nothing, `status` - hide status bar only,
+     * `immersive` - hide status + navigation bars, reveal transiently by edge swipe.
+     */
+    private void applyFullScreenMode() {
+        String mode = mProperties.getFullScreenMode();
+        if (mode == null || mode.isEmpty()) return;
+
+        View decorView = getWindow().getDecorView();
+        WindowInsetsControllerCompat controller = ViewCompat.getWindowInsetsController(decorView);
+        if (controller == null) return;
+
+        switch (mode) {
+            case com.termux.shared.termux.settings.properties.TermuxPropertyConstants.IVALUE_FULL_SCREEN_MODE_STATUS:
+                controller.hide(WindowInsetsCompat.Type.statusBars());
+                break;
+            case com.termux.shared.termux.settings.properties.TermuxPropertyConstants.IVALUE_FULL_SCREEN_MODE_IMMERSIVE:
+                controller.setSystemBarsBehavior(
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                controller.hide(WindowInsetsCompat.Type.systemBars());
+                break;
+            default:
+                controller.show(WindowInsetsCompat.Type.systemBars());
+                break;
+        }
     }
 
     /**

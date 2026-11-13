@@ -294,6 +294,8 @@ public abstract class TermuxSharedProperties {
                 return (String) getExtraKeysInternalPropertyValueFromValue(value);
             case TermuxPropertyConstants.KEY_EXTRA_KEYS_STYLE:
                 return (String) getExtraKeysStyleInternalPropertyValueFromValue(value);
+            case TermuxPropertyConstants.KEY_FULL_SCREEN_MODE:
+                return (String) getFullScreenModeInternalPropertyValueFromValue(value);
             case TermuxPropertyConstants.KEY_NIGHT_MODE:
                 return (String) getNightModeInternalPropertyValueFromValue(value);
             case TermuxPropertyConstants.KEY_SOFT_KEYBOARD_TOGGLE_BEHAVIOUR:
@@ -538,6 +540,19 @@ public abstract class TermuxSharedProperties {
         return SharedProperties.getDefaultIfNullOrEmpty(value, TermuxPropertyConstants.DEFAULT_IVALUE_EXTRA_KEYS_STYLE);
     }
 
+    public static String getFullScreenModeInternalPropertyValueFromValue(String value) {
+        if (value == null || value.isEmpty())
+            return TermuxPropertyConstants.DEFAULT_IVALUE_FULL_SCREEN_MODE;
+        switch (value) {
+            case TermuxPropertyConstants.IVALUE_FULL_SCREEN_MODE_NO:
+            case TermuxPropertyConstants.IVALUE_FULL_SCREEN_MODE_STATUS:
+            case TermuxPropertyConstants.IVALUE_FULL_SCREEN_MODE_IMMERSIVE:
+                return value;
+            default:
+                return TermuxPropertyConstants.DEFAULT_IVALUE_FULL_SCREEN_MODE;
+        }
+    }
+
     /**
      * Returns the value itself if it is not {@code null}, otherwise returns {@link TermuxPropertyConstants#DEFAULT_IVALUE_NIGHT_MODE}.
      *
@@ -620,6 +635,12 @@ public abstract class TermuxSharedProperties {
 
     public boolean isUsingFullScreen() {
         return (boolean) getInternalPropertyValue(TermuxPropertyConstants.KEY_USE_FULLSCREEN, true);
+    }
+
+    /** Returns the fullscreen mode: {@code no} (default), {@code status} (hide status bar) or
+     * {@code immersive} (hide status+nav bars, swipe to reveal transiently). */
+    public String getFullScreenMode() {
+        return (String) getInternalPropertyValue(TermuxPropertyConstants.KEY_FULL_SCREEN_MODE, true);
     }
 
     public boolean isUsingFullScreenWorkAround() {
