@@ -266,7 +266,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         ViewCompat.setOnApplyWindowInsetsListener(content, (v, insets) -> {
             androidx.core.graphics.Insets sysBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
             mNavBarHeight = sysBars.bottom;
-            v.setPadding(sysBars.left, sysBars.top, sysBars.right, sysBars.bottom);
+            // Do NOT set padding here: the root view's fitsSystemWindows already
+            // handles status/nav bar spacing. Only track nav bar height for
+            // FullScreenWorkAround and other layout calculations.
             return insets;
         });
 
