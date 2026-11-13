@@ -1,10 +1,8 @@
 package com.termux.app.terminal;
 
 import android.view.LayoutInflater;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewConfiguration;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -32,18 +30,9 @@ public class ToolsAdapter extends RecyclerView.Adapter<ToolsAdapter.ViewHolder> 
         void onToolReordered();
     }
 
-    /** Provided by the activity to start an ItemTouchHelper drag from the adapter. */
-    public interface OnToolDragStarter {
-        void startDrag(RecyclerView.ViewHolder viewHolder);
-    }
-
     private final List<ToolItem> mTools;
     private final OnToolClickListener mListener;
     private final OnToolDragListener mDragListener;
-    private OnToolDragStarter mDragStarter;
-    private int mTouchSlop;
-    private float mDownX;
-    private float mDownY;
 
     public ToolsAdapter(List<ToolItem> tools, OnToolClickListener listener) {
         this(tools, listener, null);
@@ -53,13 +42,6 @@ public class ToolsAdapter extends RecyclerView.Adapter<ToolsAdapter.ViewHolder> 
         mTools = tools;
         mListener = listener;
         mDragListener = dragListener;
-        mTouchSlop = -1; // set later via setTouchSlop()
-    }
-
-    /** Set by the activity to enable drag-to-reorder. */
-    public void setOnToolDragStarter(OnToolDragStarter starter, int touchSlop) {
-        mDragStarter = starter;
-        mTouchSlop = touchSlop;
     }
 
     /** Move a tool during drag (called by ItemTouchHelper.onMove). */
@@ -90,23 +72,6 @@ public class ToolsAdapter extends RecyclerView.Adapter<ToolsAdapter.ViewHolder> 
         holder.icon.setText(tool.icon != null && !tool.icon.isEmpty() ? tool.icon : "▶");
         holder.name.setText(tool.name);
         holder.itemView.setOnClickListener(v -> mListener.onToolClick(tool));
-        holder.itemView.setOnTouchListener((v, event) -> {
-            // Start a drag when the finger moves horizontally beyond the touch slop
-            // during a long-press. Plain long-press without movement still triggers
-            // the OnLongClickListener (edit dialog).
-            if (mDragStarter != null && event.getAction() == MotionEvent.ACTION_MOVE) {
-                if (Math.abs(event.getX() - mDownX) > mTouchSlop
-                    && Math.abs(event.getY() - mDownY) < Math.abs(event.getX() - mDownX)) {
-                    mDragStarter.startDrag(holder);
-                    v.performClick();
-                    return true;
-                }
-            } else if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                mDownX = event.getX();
-                mDownY = event.getY();
-            }
-            return false;
-        });
         holder.itemView.setOnLongClickListener(v -> {
             mListener.onToolLongClick(tool);
             return true;

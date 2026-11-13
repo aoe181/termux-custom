@@ -28,6 +28,7 @@ import android.widget.RelativeLayout;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.RecyclerView;
@@ -116,6 +117,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     /** Adapter backing the quick tools drawer grid. */
     ToolsAdapter mToolsAdapter;
+
+    /** Whether the quick tools grid is in drag-reorder mode. */
+    boolean mToolsReorderMode = false;
+
+    /** ItemTouchHelper driving quick tools drag-reorder. */
+    ItemTouchHelper mItemTouchHelper;
 
     /** Drawer edge-swipe zone width in pixels (applied to both left and right drawers). */
     private int mDrawerEdgeSizePx;
@@ -623,11 +630,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         ToolsAdapter adapter = new ToolsAdapter(tools, new ToolsAdapter.OnToolClickListener() {
             @Override
             public void onToolClick(ToolItem tool) {
+                // In reorder mode taps are suppressed.
+                if (mToolsReorderMode) return;
+
                 // Interactive mirror picker tool: show selection dialog instead of
                 // writing a command directly.
                 if (ToolItem.MIRROR_SWITCH_COMMAND.equals(tool.command)) {
-                    showMirrorSwitchDialog();
                     getDrawer().closeDrawers();
+                    showMirrorSwitchDialog();
                     return;
                 }
 
@@ -641,7 +651,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     // Create a new session, then run the tool command in it.
                     mTermuxTerminalSessionActivityClient.addNewSession(false, null);
                     TerminalSession newSession = getCurrentSession();
-                    if (newSession != null && newSession.isRunning()) {
+                    if (newSession != null && newSession.isRunning()
+                        && newSession.getEmulator() != null) {
                         newSession.getEmulator().paste(tool.command);
                         newSession.write("\r");
                     }
@@ -655,14 +666,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
             @Override
             public void onToolLongClick(ToolItem tool) {
+                // In reorder mode long-press is reserved for dragging.
+                if (mToolsReorderMode) return;
                 showToolEditDialog(tool);
             }
         }, () -> ToolStore.save(this, mToolsAdapter.getTools()));
         toolsRecyclerView.setAdapter(adapter);
         mToolsAdapter = adapter;
-
-        // Long-press-drag to reorder tools
-        ItemTouchHelper itemTouchHelper = new ItemTouchHelper(new ItemTouchHelper.Callback() {
+        // Drag-to-reorder tools, started via the title-bar toggle button (reorder mode)
+        mItemTouchHelper = new ItemTouchHelper(new ItemTouchHelper.Callback() {
             @Override
             public int getMovementFlags(@NonNull RecyclerView recyclerView,
                                         @NonNull RecyclerView.ViewHolder viewHolder) {
@@ -685,25 +697,61 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
             @Override
             public boolean isLongPressDragEnabled() {
-                // Long-press-drag would conflict with the long-click edit dialog.
-                // Drags start from the drag-handle flow implemented in the item's
-                // touch listener (see below) instead.
-                return false;
+                // Only enabled while reorder mode is on; long-press is the edit
+                // gesture in normal mode.
+                return mToolsReorderMode;
+            }
+
+            @Override
+            public void onSelectedChanged(@Nullable RecyclerView.ViewHolder viewHolder, int actionState) {
+                super.onSelectedChanged(viewHolder, actionState);
+                // A2: visual lift feedback while dragging.
+                if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && viewHolder != null) {
+                    viewHolder.itemView.setTranslationZ(16f);
+                    viewHolder.itemView.setScaleX(1.08f);
+                    viewHolder.itemView.setScaleY(1.08f);
+                    viewHolder.itemView.setAlpha(0.9f);
+                }
             }
 
             @Override
             public void clearView(@NonNull RecyclerView recyclerView,
                                   @NonNull RecyclerView.ViewHolder viewHolder) {
                 super.clearView(recyclerView, viewHolder);
+                // Reset the visual lift.
+                viewHolder.itemView.setTranslationZ(0f);
+                viewHolder.itemView.setScaleX(1f);
+                viewHolder.itemView.setScaleY(1f);
+                viewHolder.itemView.setAlpha(1f);
                 // Drag finished (dropped or cancelled): persist the new order.
                 mToolsAdapter.onDragSettled();
             }
         });
-        itemTouchHelper.attachToRecyclerView(toolsRecyclerView);
-        mToolsAdapter.setOnToolDragStarter(itemTouchHelper::startDrag,
-            android.view.ViewConfiguration.get(this).getScaledTouchSlop());
+        mItemTouchHelper.attachToRecyclerView(toolsRecyclerView);
 
+        findViewById(R.id.tools_reorder_button).setOnClickListener(v -> toggleToolsReorderMode());
         findViewById(R.id.add_tool_button).setOnClickListener(v -> showToolEditDialog(null));
+    }
+
+    /** Toggle drag-reorder mode for the quick tools grid. */
+    private void toggleToolsReorderMode() {
+        mToolsReorderMode = !mToolsReorderMode;
+
+        TextView title = findViewById(R.id.tools_drawer_title);
+        ImageButton reorderButton = findViewById(R.id.tools_reorder_button);
+        if (mToolsReorderMode) {
+            title.setText(R.string.tools_reorder_mode_hint);
+            reorderButton.setAlpha(1f);
+            reorderButton.setColorFilter(
+                ContextCompat.getColor(this, android.R.color.holo_blue_light));
+            Logger.showToast(this, getString(R.string.tools_reorder_mode_hint), false);
+        } else {
+            title.setText(R.string.tools_drawer_title);
+            reorderButton.setAlpha(0.6f);
+            reorderButton.clearColorFilter();
+            // Persist the (possibly new) order on exit.
+            ToolStore.save(this, mToolsAdapter.getTools());
+        }
     }
 
     /** Show a dialog to add (null tool) or edit/delete an existing tool. */

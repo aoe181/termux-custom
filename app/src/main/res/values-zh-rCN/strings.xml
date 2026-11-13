@@ -54,8 +54,11 @@
     <string name="action_close_session">关闭会话（释放）</string>
     <string name="tools_close_no_confirm">关闭且不再提示</string>
     <string name="tools_mirror_switch_title">切换软件源</string>
+    <string name="tools_reorder_mode">拖动排序</string>
+    <string name="tools_reorder_mode_hint">拖动排序中 — 拖动图标调整顺序，再次点击↕按钮退出</string>
 
     <string name="title_rename_session">设置会话名称</string>
+    <string name="action_rename_session">重命名</string>
     <string name="action_rename_session_confirm">设置</string>
     <string name="title_create_named_session">新建命名会话</string>
     <string name="action_create_named_session_confirm">创建</string>

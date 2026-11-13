@@ -113,7 +113,7 @@ public class TermuxSessionsListViewController extends ArrayAdapter<TermuxSession
         new AlertDialog.Builder(mActivity)
             .setTitle(currentName)
             .setItems(new CharSequence[]{
-                    mActivity.getString(R.string.action_rename_session_confirm) + " / " + mActivity.getString(R.string.title_rename_session),
+                    mActivity.getString(R.string.action_rename_session),
                     mActivity.getString(R.string.action_close_session)
                 },
                 (dialog, which) -> {

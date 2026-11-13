@@ -71,9 +71,12 @@
     <string name="tools_empty_error">Name and command are required</string>
     <string name="action_close_session">Close session (free)</string>
     <string name="tools_close_no_confirm">Close and don\'t ask again</string>
-    <string name="tools_mirror_switch_title">切换软件源</string>
+    <string name="tools_mirror_switch_title">Switch mirror</string>
+    <string name="tools_reorder_mode">Reorder tools</string>
+    <string name="tools_reorder_mode_hint">Reordering — drag icons to rearrange, tap the button again to exit</string>
 
     <string name="title_rename_session">Set session name</string>
+    <string name="action_rename_session">Rename</string>
     <string name="action_rename_session_confirm">Set</string>
     <string name="title_create_named_session">New named session</string>
     <string name="action_create_named_session_confirm">Create</string>
