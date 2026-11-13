@@ -116,6 +116,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     /** Adapter backing the quick tools drawer grid. */
     ToolsAdapter mToolsAdapter;
 
+    /** Drawer edge-swipe zone width in pixels (applied to both left and right drawers). */
+    private int mDrawerEdgeSizePx;
+
     /**
      * Termux app shared preferences manager.
      */
@@ -266,8 +269,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         setQuickToolsDrawerView();
 
-        registerForContextMenu(mTerminalView);
+        setDrawerEdgeTouchRestriction();
 
+        registerForContextMenu(mTerminalView);
         FileReceiverActivity.updateFileReceiverActivityComponentsState(this);
 
         try {
@@ -619,13 +623,24 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             @Override
             public void onToolClick(ToolItem tool) {
                 TerminalSession session = getCurrentSession();
-                if (session == null || !session.isRunning()) {
-                    Logger.showToast(TermuxActivity.this, getString(R.string.tools_no_session), false);
-                    return;
+                boolean sessionBusy = session != null && session.isRunning()
+                    // A TUI/fullscreen app (opencode, vim, htop, ...) is active in the
+                    // current session, so run the command in a fresh session instead.
+                    && session.getEmulator() != null && session.getEmulator().isAlternateBufferActive();
+
+                if (session == null || sessionBusy) {
+                    // Create a new session, then run the tool command in it.
+                    mTermuxTerminalSessionActivityClient.addNewSession(false, null);
+                    TerminalSession newSession = getCurrentSession();
+                    if (newSession != null && newSession.isRunning()) {
+                        newSession.getEmulator().paste(tool.command);
+                        newSession.write("\r");
+                    }
+                } else {
+                    // Normal shell session: write command followed by enter directly.
+                    session.getEmulator().paste(tool.command);
+                    session.write("\r");
                 }
-                // Write command to current session stdin followed by enter
-                session.getEmulator().paste(tool.command);
-                session.getEmulator().paste("\r");
                 getDrawer().closeDrawers();
             }
 
@@ -703,8 +718,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     @SuppressLint("RtlHardcoded")
     @Override
     public void onBackPressed() {
+        // Close whichever drawer is open (left sessions list or right quick tools)
+        // before allowing the activity to finish, so the back gesture never exits
+        // the app while a drawer is showing.
         if (getDrawer().isDrawerOpen(Gravity.LEFT)) {
-            getDrawer().closeDrawers();
+            getDrawer().closeDrawer(Gravity.LEFT);
+        } else if (getDrawer().isDrawerOpen(Gravity.RIGHT)) {
+            getDrawer().closeDrawer(Gravity.RIGHT);
         } else {
             finishActivityIfNotFinishing();
         }
@@ -757,6 +777,49 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     public boolean onCreateOptionsMenu(Menu menu) {
         mTerminalView.showContextMenu();
         return false;
+    }
+
+    /**
+     * Compute the drawer edge-swipe zone: 40% of the drawer width (clamped to 80-160dp),
+     * re-applied from the root view's onGlobalLayout() since DrawerLayout resets edge
+     * sizes on every layout pass (max(default, gestureInsets)).
+     */
+    private void setDrawerEdgeTouchRestriction() {
+        float density = getResources().getDisplayMetrics().density;
+        int minPx = (int) (80 * density);
+        int maxPx = (int) (160 * density);
+        // drawer width is 240dp (left) / 260dp (right); use 40% of the average
+        int drawerWidthPx = (int) (250 * density);
+        mDrawerEdgeSizePx = Math.min(maxPx, Math.max(minPx, (int) (drawerWidthPx * 0.40f)));
+        applyDrawerEdgeSize();
+    }
+
+    /**
+     * Enlarge the drawer edge-swipe zones so a swipe from a good part of the screen edge
+     * opens the drawer reliably. The default zone is tiny and overlaps the system
+     * back-gesture area on gesture navigation, so swipes meant for the drawer end up
+     * triggering "back". DrawerLayout resets edge sizes on every layout pass
+     * (max(default, gestureInsets)), so we re-apply the size from the root view's
+     * existing onGlobalLayout() flow. ViewDragHelper.setEdgeSize() is a public API; the
+     * dragger fields of DrawerLayout are private, hence the small reflection accessor.
+     */
+    public void applyDrawerEdgeSize() {
+        if (mDrawerEdgeSizePx <= 0) return;
+        setDraggerEdgeSize("mLeftDragger", mDrawerEdgeSizePx);
+        setDraggerEdgeSize("mRightDragger", mDrawerEdgeSizePx);
+    }
+
+    private void setDraggerEdgeSize(String fieldName, int edgePx) {
+        try {
+            java.lang.reflect.Field f = DrawerLayout.class.getDeclaredField(fieldName);
+            f.setAccessible(true);
+            Object dragger = f.get(getDrawer());
+            if (dragger instanceof androidx.customview.widget.ViewDragHelper) {
+                ((androidx.customview.widget.ViewDragHelper) dragger).setEdgeSize(edgePx);
+            }
+        } catch (Exception e) {
+            Logger.logError(LOG_TAG, "setDraggerEdgeSize failed: " + e.getMessage());
+        }
     }
 
     @Override

@@ -82,12 +82,12 @@ public class ToolItem {
     /** Default tools used on first run. */
     public static List<ToolItem> defaults() {
         List<ToolItem> tools = new ArrayList<>();
-        tools.add(new ToolItem("Update", "⬇", "pkg update"));
-        tools.add(new ToolItem("Upgrade", "⬆", "pkg upgrade"));
-        tools.add(new ToolItem("Editor", "📝", "nano"));
-        tools.add(new ToolItem("Processes", "📊", "htop"));
-        tools.add(new ToolItem("List", "📂", "ls -la"));
-        tools.add(new ToolItem("Clear", "🧹", "clear"));
+        tools.add(new ToolItem("同步索引", "⬇", "pkg update"));
+        tools.add(new ToolItem("up全部包", "⬆", "pkg upgrade"));
+        tools.add(new ToolItem("官方源", "🏛", "sed -i 's|https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main|https://packages.termux.dev/apt/termux-main|g' $PREFIX/etc/apt/sources.list && pkg update"));
+        tools.add(new ToolItem("清华源", "🎓", "sed -i 's|https://packages.termux.dev/apt/termux-main|https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main|g' $PREFIX/etc/apt/sources.list && pkg update"));
+        tools.add(new ToolItem("进程监视", "📊", "htop"));
+        tools.add(new ToolItem("清屏", "🧹", "clear"));
         return tools;
     }
 }

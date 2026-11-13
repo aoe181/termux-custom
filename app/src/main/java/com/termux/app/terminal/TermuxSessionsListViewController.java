@@ -1,6 +1,7 @@
 package com.termux.app.terminal;
 
 import android.annotation.SuppressLint;
+import android.app.AlertDialog;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
@@ -102,7 +103,30 @@ public class TermuxSessionsListViewController extends ArrayAdapter<TermuxSession
     @Override
     public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
         final TermuxSession selectedSession = getItem(position);
-        mActivity.getTermuxTerminalSessionClient().renameSession(selectedSession.getTerminalSession());
+        if (selectedSession == null) return false;
+
+        final TerminalSession terminalSession = selectedSession.getTerminalSession();
+        String currentName = terminalSession.mSessionName;
+        if (currentName == null || currentName.isEmpty())
+            currentName = mActivity.getString(R.string.action_new_session);
+
+        new AlertDialog.Builder(mActivity)
+            .setTitle(currentName)
+            .setItems(new CharSequence[]{
+                    mActivity.getString(R.string.action_rename_session_confirm) + " / " + mActivity.getString(R.string.title_rename_session),
+                    mActivity.getString(R.string.action_close_session)
+                },
+                (dialog, which) -> {
+                    if (which == 0) {
+                        mActivity.getTermuxTerminalSessionClient().renameSession(terminalSession);
+                    } else if (which == 1) {
+                        // Kill the process and free the session.
+                        terminalSession.finishIfRunning();
+                        mActivity.getTermuxTerminalSessionClient().removeFinishedSession(terminalSession);
+                    }
+                })
+            .setNegativeButton(R.string.tools_cancel, null)
+            .show();
         return true;
     }
 

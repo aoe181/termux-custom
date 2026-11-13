@@ -120,6 +120,9 @@ public class TermuxActivityRootView extends LinearLayout implements ViewTreeObse
     public void onGlobalLayout() {
         if (mActivity == null || !mActivity.isVisible()) return;
 
+        // Re-apply drawer edge-swipe zones; DrawerLayout resets them on every layout pass.
+        mActivity.applyDrawerEdgeSize();
+
         View bottomSpaceView = mActivity.getTermuxActivityBottomSpaceView();
         if (bottomSpaceView == null) return;
 
