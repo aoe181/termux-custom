@@ -55,6 +55,21 @@
     <string name="title_max_terminals_reached">Max terminals reached</string>
     <string name="msg_max_terminals_reached">Close down existing ones before creating new.</string>
 
+    <!-- Quick Tools Drawer -->
+    <string name="tools_drawer_title">Quick tools</string>
+    <string name="tools_add_tool">Add tool</string>
+    <string name="tools_edit_title">Edit tool</string>
+    <string name="tools_new_title">New tool</string>
+    <string name="tools_name_label">Name</string>
+    <string name="tools_icon_label">Icon (emoji)</string>
+    <string name="tools_command_label">Command</string>
+    <string name="tools_delete">Delete</string>
+    <string name="tools_save">Save</string>
+    <string name="tools_cancel">Cancel</string>
+    <string name="tools_sent">Sent to session</string>
+    <string name="tools_no_session">No running session</string>
+    <string name="tools_empty_error">Name and command are required</string>
+
     <string name="title_rename_session">Set session name</string>
     <string name="action_rename_session_confirm">Set</string>
     <string name="title_create_named_session">New named session</string>

@@ -22,12 +22,20 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.RelativeLayout;
 import android.widget.Toast;
 
+import androidx.annotation.Nullable;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
 import com.termux.R;
 import com.termux.app.api.file.FileReceiverActivity;
+import com.termux.app.models.ToolItem;
+import com.termux.app.models.ToolStore;
+import com.termux.app.terminal.ToolsAdapter;
 import com.termux.app.terminal.TermuxActivityRootView;
 import com.termux.app.terminal.TermuxTerminalSessionActivityClient;
 import com.termux.app.terminal.io.TermuxTerminalExtraKeys;
@@ -102,6 +110,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
      *  {@link TerminalSession} and {@link TermuxActivity}.
      */
     TermuxTerminalSessionActivityClient mTermuxTerminalSessionActivityClient;
+
+    /** Adapter backing the quick tools drawer grid. */
+    ToolsAdapter mToolsAdapter;
 
     /**
      * Termux app shared preferences manager.
@@ -250,6 +261,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setNewSessionButtonView();
 
         setToggleKeyboardView();
+
+        setQuickToolsDrawerView();
 
         registerForContextMenu(mTerminalView);
 
@@ -592,6 +605,93 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             toggleTerminalToolbar();
             return true;
         });
+    }
+
+    /** Set up the right-side quick tools drawer (icon grid, add/edit/delete, run command). */
+    private void setQuickToolsDrawerView() {
+        RecyclerView toolsRecyclerView = findViewById(R.id.tools_recycler_view);
+        toolsRecyclerView.setLayoutManager(new GridLayoutManager(this, 4));
+
+        List<ToolItem> tools = ToolStore.load(this);
+        ToolsAdapter adapter = new ToolsAdapter(tools, new ToolsAdapter.OnToolClickListener() {
+            @Override
+            public void onToolClick(ToolItem tool) {
+                TerminalSession session = getCurrentSession();
+                if (session == null || !session.isRunning()) {
+                    Logger.showToast(TermuxActivity.this, getString(R.string.tools_no_session), false);
+                    return;
+                }
+                // Write command to current session stdin followed by enter
+                session.getEmulator().paste(tool.command);
+                session.getEmulator().paste("\r");
+                getDrawer().closeDrawers();
+            }
+
+            @Override
+            public void onToolLongClick(ToolItem tool) {
+                showToolEditDialog(tool);
+            }
+        });
+        toolsRecyclerView.setAdapter(adapter);
+        mToolsAdapter = adapter;
+
+        findViewById(R.id.add_tool_button).setOnClickListener(v -> showToolEditDialog(null));
+    }
+
+    /** Show a dialog to add (null tool) or edit/delete an existing tool. */
+    private void showToolEditDialog(@Nullable ToolItem tool) {
+        boolean isNew = tool == null;
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (16 * getResources().getDisplayMetrics().density);
+        container.setPadding(pad, pad, pad, 0);
+
+        EditText nameInput = new EditText(this);
+        nameInput.setHint(R.string.tools_name_label);
+        nameInput.setText(isNew ? "" : tool.name);
+        container.addView(nameInput);
+
+        EditText iconInput = new EditText(this);
+        iconInput.setHint(R.string.tools_icon_label);
+        iconInput.setText(isNew ? "▶" : tool.icon);
+        container.addView(iconInput);
+
+        EditText commandInput = new EditText(this);
+        commandInput.setHint(R.string.tools_command_label);
+        commandInput.setText(isNew ? "" : tool.command);
+        commandInput.setSingleLine(false);
+        commandInput.setMaxLines(4);
+        container.addView(commandInput);
+
+        new AlertDialog.Builder(this)
+            .setTitle(isNew ? R.string.tools_new_title : R.string.tools_edit_title)
+            .setView(container)
+            .setPositiveButton(isNew ? R.string.tools_save : R.string.tools_save, (dialog, which) -> {
+                String name = nameInput.getText().toString().trim();
+                String icon = iconInput.getText().toString().trim();
+                String command = commandInput.getText().toString();
+                if (name.isEmpty() || command.isEmpty()) {
+                    Logger.showToast(this, getString(R.string.tools_empty_error), false);
+                    return;
+                }
+                if (isNew) {
+                    mToolsAdapter.addTool(new ToolItem(name, icon, command));
+                } else {
+                    tool.name = name;
+                    tool.icon = icon;
+                    tool.command = command;
+                    mToolsAdapter.notifyDataSetChanged();
+                }
+                ToolStore.save(this, mToolsAdapter.getTools());
+            })
+            .setNeutralButton(R.string.tools_delete, (dialog, which) -> {
+                if (!isNew) {
+                    mToolsAdapter.removeTool(tool);
+                    ToolStore.save(this, mToolsAdapter.getTools());
+                }
+            })
+            .setNegativeButton(R.string.tools_cancel, null)
+            .show();
     }
 
 
