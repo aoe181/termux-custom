@@ -991,7 +991,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     /**
-     * Compute the drawer edge-swipe zone: 40% of the drawer width (clamped to 80-160dp),
+     * Compute the drawer edge-swipe zone: 30% of the drawer width (clamped to 80-160dp),
      * re-applied from the root view's onGlobalLayout() since DrawerLayout resets edge
      * sizes on every layout pass (max(default, gestureInsets)).
      */
@@ -999,9 +999,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         float density = getResources().getDisplayMetrics().density;
         int minPx = (int) (80 * density);
         int maxPx = (int) (160 * density);
-        // drawer width is 240dp (left) / 260dp (right); use 40% of the average
+        // drawer width is 240dp (left) / 260dp (right); use 30% of the average
         int drawerWidthPx = (int) (250 * density);
-        mDrawerEdgeSizePx = Math.min(maxPx, Math.max(minPx, (int) (drawerWidthPx * 0.40f)));
+        mDrawerEdgeSizePx = Math.min(maxPx, Math.max(minPx, (int) (drawerWidthPx * 0.30f)));
         applyDrawerEdgeSize();
     }
 
