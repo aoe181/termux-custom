@@ -53,15 +53,34 @@ jobs:
           echo "APK_DIR=app/build/outputs/apk/release" >> $GITHUB_ENV
           ls -la app/build/outputs/apk/release/
 
-      - name: Select arm64 APK
+      - name: Build arm64 debug APK
+        env:
+          TERMUX_APP_VERSION_NAME: ${{ steps.version.outputs.name }}
+          TERMUX_APK_VERSION_TAG: ${{ steps.version.outputs.tag }}-apt-android-7-github-debug
+          TERMUX_PACKAGE_VARIANT: apt-android-7
+          TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS: '1'
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleDebug --no-daemon
+          echo "APK_DIR_DEBUG=app/build/outputs/apk/debug" >> $GITHUB_ENV
+          ls -la app/build/outputs/apk/debug/
+
+      - name: Select arm64 APKs
         id: apk
         run: |
-          APK=$(find "$APK_DIR" -name "*_arm64-v8a.apk" | head -1)
-          [ -z "$APK" ] && { echo "arm64 APK not found"; ls "$APK_DIR"; exit 1; }
-          echo "apk=$APK" >> $GITHUB_OUTPUT
-          echo "name=$(basename "$APK")" >> $GITHUB_OUTPUT
+          REL=$(find "$APK_DIR" -name "*_arm64-v8a.apk" | head -1)
+          DBG=$(find "$APK_DIR_DEBUG" -name "*_arm64-v8a.apk" | head -1)
+          [ -z "$REL" ] && { echo "release arm64 APK not found"; ls "$APK_DIR"; exit 1; }
+          [ -z "$DBG" ] && { echo "debug arm64 APK not found"; ls "$APK_DIR_DEBUG"; exit 1; }
+          echo "release=$REL" >> $GITHUB_OUTPUT
+          echo "debug=$DBG" >> $GITHUB_OUTPUT
+          echo "release_name=$(basename "$REL")" >> $GITHUB_OUTPUT
+          echo "debug_name=$(basename "$DBG")" >> $GITHUB_OUTPUT
 
-      - name: Create pre-release and upload APK
+      - name: Create pre-release and upload APKs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.version.outputs.tag }}
@@ -73,6 +92,9 @@ jobs:
             --notes "自动构建于 commit ${GITHUB_SHA::7}
 
           - 基于 termux-app v${{ steps.version.outputs.name }}
-          - 仅 arm64-v8a, release 签名 (R8 enabled)
-          - 包名 com.termux, 官方 pkg 源完全可用" \
-            "${{ steps.apk.outputs.apk }}"
+          - 仅 arm64-v8a, 包名 com.termux, 官方 pkg 源完全可用
+          - **${{ steps.apk.outputs.release_name }}**: release 构建 (R8, 非 debuggable, 省内存)
+          - **${{ steps.apk.outputs.debug_name }}**: debug 构建 (debuggable, htop/ps 可见本体进程, 崩溃栈最全)
+          - 两包同签名, 可互相覆盖安装, 但不可与官方包共存" \
+            "${{ steps.apk.outputs.release }}" \
+            "${{ steps.apk.outputs.debug }}"
