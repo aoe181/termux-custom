@@ -162,7 +162,12 @@ public class TermuxSessionsListViewController extends RecyclerView.Adapter<Termu
         } else {
             terminalSession.finishIfRunning();
         }
-        mActivity.getTermuxTerminalSessionClient().removeFinishedSession(terminalSession);
+        // Delay removal: SIGKILL is async and the process may still be alive.
+        // TermuxSession.finish() bails out if isRunning(), so we must wait for
+        // the process to actually die before removing it.
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            mActivity.getTermuxTerminalSessionClient().removeFinishedSession(terminalSession);
+        }, 300);
     }
 
     private void showSessionCloseConfirmDialog(TerminalSession terminalSession) {
