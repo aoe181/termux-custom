@@ -122,6 +122,16 @@ public class TermuxAppSharedPreferences extends AppSharedPreferences {
 
 
 
+    public boolean shouldSkipSessionCloseConfirmation() {
+        return SharedPreferenceUtils.getBoolean(mSharedPreferences, TERMUX_APP.KEY_SKIP_SESSION_CLOSE_CONFIRMATION, TERMUX_APP.DEFAULT_VALUE_KEY_SKIP_SESSION_CLOSE_CONFIRMATION);
+    }
+
+    public void setSkipSessionCloseConfirmation(boolean value) {
+        SharedPreferenceUtils.setBoolean(mSharedPreferences, TERMUX_APP.KEY_SKIP_SESSION_CLOSE_CONFIRMATION, value, false);
+    }
+
+
+
     public static int[] getDefaultFontSizes(Context context) {
         float dipInPixels = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 1, context.getResources().getDisplayMetrics());
 

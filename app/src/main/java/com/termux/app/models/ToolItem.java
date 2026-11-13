@@ -84,8 +84,9 @@ public class ToolItem {
         List<ToolItem> tools = new ArrayList<>();
         tools.add(new ToolItem("同步索引", "⬇", "pkg update"));
         tools.add(new ToolItem("up全部包", "⬆", "pkg upgrade"));
-        tools.add(new ToolItem("官方源", "🏛", "sed -i 's|https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main|https://packages.termux.dev/apt/termux-main|g' $PREFIX/etc/apt/sources.list && pkg update"));
-        tools.add(new ToolItem("清华源", "🎓", "sed -i 's|https://packages.termux.dev/apt/termux-main|https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main|g' $PREFIX/etc/apt/sources.list && pkg update"));
+        tools.add(new ToolItem("轮换源", "🔄",
+            // Rotate apt mirror: official -> tsinghua -> ustc -> aliyun -> official, then refresh index.
+            "sed -i 's|https://packages.termux.dev/apt/termux-main|M0|g; s|https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main|M1|g; s|https://mirrors.ustc.edu.cn/termux/apt/termux-main|M2|g; s|https://mirrors.aliyun.com/termux/apt/termux-main|M3|g; s|M0|https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main|g; s|M1|https://mirrors.ustc.edu.cn/termux/apt/termux-main|g; s|M2|https://mirrors.aliyun.com/termux/apt/termux-main|g; s|M3|https://packages.termux.dev/apt/termux-main|g' $PREFIX/etc/apt/sources.list && grep -oE 'https://[^/ ]+' $PREFIX/etc/apt/sources.list | head -1 && pkg update"));
         tools.add(new ToolItem("进程监视", "📊", "htop"));
         tools.add(new ToolItem("清屏", "🧹", "clear"));
         return tools;

@@ -52,6 +52,7 @@
     <string name="tools_no_session">没有正在运行的会话</string>
     <string name="tools_empty_error">名称和命令不能为空</string>
     <string name="action_close_session">关闭会话（释放）</string>
+    <string name="tools_close_no_confirm">关闭且不再提示</string>
 
     <string name="title_rename_session">设置会话名称</string>
     <string name="action_rename_session_confirm">设置</string>

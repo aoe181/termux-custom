@@ -124,21 +124,43 @@ public class TermuxSessionsListViewController extends ArrayAdapter<TermuxSession
                         // in one step. Passing processResult=false avoids the "press enter
                         // to exit" leftover-shell state, and removeFinishedSession() cleans
                         // up the TermuxSession bookkeeping and switches to a neighbor session.
-                        com.termux.shared.termux.shell.command.runner.terminal.TermuxSession termuxSession =
-                            mActivity.getTermuxService() != null
-                                ? mActivity.getTermuxService().getTermuxSessionForTerminalSession(terminalSession)
-                                : null;
-                        if (termuxSession != null) {
-                            termuxSession.killIfExecuting(mActivity, false);
+                        // Skip the confirm dialog when the user disabled it.
+                        if (mActivity.getPreferences().shouldSkipSessionCloseConfirmation()) {
+                            closeSessionNow(terminalSession);
                         } else {
-                            terminalSession.finishIfRunning();
+                            showSessionCloseConfirmDialog(terminalSession);
                         }
-                        mActivity.getTermuxTerminalSessionClient().removeFinishedSession(terminalSession);
                     }
                 })
             .setNegativeButton(R.string.tools_cancel, null)
             .show();
         return true;
+    }
+
+    private void closeSessionNow(TerminalSession terminalSession) {
+        com.termux.shared.termux.shell.command.runner.terminal.TermuxSession termuxSession =
+            mActivity.getTermuxService() != null
+                ? mActivity.getTermuxService().getTermuxSessionForTerminalSession(terminalSession)
+                : null;
+        if (termuxSession != null) {
+            termuxSession.killIfExecuting(mActivity, false);
+        } else {
+            terminalSession.finishIfRunning();
+        }
+        mActivity.getTermuxTerminalSessionClient().removeFinishedSession(terminalSession);
+    }
+
+    private void showSessionCloseConfirmDialog(TerminalSession terminalSession) {
+        new AlertDialog.Builder(mActivity)
+            .setTitle(terminalSession.mSessionName)
+            .setMessage(R.string.title_confirm_kill_process)
+            .setPositiveButton(R.string.action_close_session, (dialog, which) -> closeSessionNow(terminalSession))
+            .setNeutralButton(R.string.tools_close_no_confirm, (dialog, which) -> {
+                mActivity.getPreferences().setSkipSessionCloseConfirmation(true);
+                closeSessionNow(terminalSession);
+            })
+            .setNegativeButton(R.string.tools_cancel, null)
+            .show();
     }
 
 }

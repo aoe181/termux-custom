@@ -29,6 +29,7 @@ import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.termux.R;
@@ -648,9 +649,51 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             public void onToolLongClick(ToolItem tool) {
                 showToolEditDialog(tool);
             }
-        });
+        }, () -> ToolStore.save(this, mToolsAdapter.getTools()));
         toolsRecyclerView.setAdapter(adapter);
         mToolsAdapter = adapter;
+
+        // Long-press-drag to reorder tools
+        ItemTouchHelper itemTouchHelper = new ItemTouchHelper(new ItemTouchHelper.Callback() {
+            @Override
+            public int getMovementFlags(@NonNull RecyclerView recyclerView,
+                                        @NonNull RecyclerView.ViewHolder viewHolder) {
+                return makeMovementFlags(ItemTouchHelper.UP | ItemTouchHelper.DOWN
+                    | ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT, 0);
+            }
+
+            @Override
+            public boolean onMove(@NonNull RecyclerView recyclerView,
+                                  @NonNull RecyclerView.ViewHolder viewHolder,
+                                  @NonNull RecyclerView.ViewHolder target) {
+                return mToolsAdapter.moveItem(viewHolder.getBindingAdapterPosition(),
+                    target.getBindingAdapterPosition());
+            }
+
+            @Override
+            public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) {
+                // Not used; no swipe actions.
+            }
+
+            @Override
+            public boolean isLongPressDragEnabled() {
+                // Long-press-drag would conflict with the long-click edit dialog.
+                // Drags start from the drag-handle flow implemented in the item's
+                // touch listener (see below) instead.
+                return false;
+            }
+
+            @Override
+            public void clearView(@NonNull RecyclerView recyclerView,
+                                  @NonNull RecyclerView.ViewHolder viewHolder) {
+                super.clearView(recyclerView, viewHolder);
+                // Drag finished (dropped or cancelled): persist the new order.
+                mToolsAdapter.onDragSettled();
+            }
+        });
+        itemTouchHelper.attachToRecyclerView(toolsRecyclerView);
+        mToolsAdapter.setOnToolDragStarter(itemTouchHelper::startDrag,
+            ViewConfiguration.get(this).getScaledTouchSlop());
 
         findViewById(R.id.add_tool_button).setOnClickListener(v -> showToolEditDialog(null));
     }

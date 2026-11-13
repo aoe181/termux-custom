@@ -126,6 +126,14 @@ public final class TermuxPreferenceConstants {
 
 
         /**
+         * Defines the key for whether closing a session from the session list long-press
+         * menu should skip the confirmation dialog.
+         */
+        public static final String KEY_SKIP_SESSION_CLOSE_CONFIRMATION = "skip_session_close_confirmation";
+        public static final boolean DEFAULT_VALUE_KEY_SKIP_SESSION_CLOSE_CONFIRMATION = false;
+
+
+        /**
          * Defines the key for font size of termux terminal view.
          */
         public static final String KEY_FONTSIZE = "fontsize";

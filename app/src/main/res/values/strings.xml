@@ -70,6 +70,7 @@
     <string name="tools_no_session">No running session</string>
     <string name="tools_empty_error">Name and command are required</string>
     <string name="action_close_session">Close session (free)</string>
+    <string name="tools_close_no_confirm">Close and don\'t ask again</string>
 
     <string name="title_rename_session">Set session name</string>
     <string name="action_rename_session_confirm">Set</string>
