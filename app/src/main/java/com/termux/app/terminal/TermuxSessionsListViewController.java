@@ -120,8 +120,19 @@ public class TermuxSessionsListViewController extends ArrayAdapter<TermuxSession
                     if (which == 0) {
                         mActivity.getTermuxTerminalSessionClient().renameSession(terminalSession);
                     } else if (which == 1) {
-                        // Kill the process and free the session.
-                        terminalSession.finishIfRunning();
+                        // Kill the shell process, then fully remove and free the session
+                        // in one step. Passing processResult=false avoids the "press enter
+                        // to exit" leftover-shell state, and removeFinishedSession() cleans
+                        // up the TermuxSession bookkeeping and switches to a neighbor session.
+                        com.termux.shared.termux.shell.command.runner.terminal.TermuxSession termuxSession =
+                            mActivity.getTermuxService() != null
+                                ? mActivity.getTermuxService().getTermuxSessionForTerminalSession(terminalSession)
+                                : null;
+                        if (termuxSession != null) {
+                            termuxSession.killIfExecuting(mActivity, false);
+                        } else {
+                            terminalSession.finishIfRunning();
+                        }
                         mActivity.getTermuxTerminalSessionClient().removeFinishedSession(terminalSession);
                     }
                 })
