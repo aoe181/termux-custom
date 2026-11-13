@@ -23,7 +23,6 @@ import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
-import android.widget.ListView;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -35,6 +34,7 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.ItemTouchHelper;
+import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.termux.R;
@@ -127,6 +127,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     /** ItemTouchHelper driving quick tools drag-reorder. */
     ItemTouchHelper mItemTouchHelper;
+
+    /** Predictive back callback (Android 13+). */
+    private androidx.activity.OnBackPressedCallback mBackCallback;
 
     /** Drawer edge-swipe zone width in pixels (applied to both left and right drawers). */
     private int mDrawerEdgeSizePx;
@@ -260,8 +263,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         mTermuxActivityRootView.setOnApplyWindowInsetsListener(new TermuxActivityRootView.WindowInsetsListener());
 
         View content = findViewById(android.R.id.content);
-        content.setOnApplyWindowInsetsListener((v, insets) -> {
-            mNavBarHeight = insets.getSystemWindowInsetBottom();
+        ViewCompat.setOnApplyWindowInsetsListener(content, (v, insets) -> {
+            android.graphics.Insets sysBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            mNavBarHeight = sysBars.bottom;
+            // Apply system bar insets as padding for edge-to-edge on Android 15+
+            v.setPadding(sysBars.left, sysBars.top, sysBars.right, sysBars.bottom);
             return insets;
         });
 
@@ -284,6 +290,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setQuickToolsDrawerView();
 
         setDrawerEdgeTouchRestriction();
+
+        setupPredictiveBack();
 
         registerForContextMenu(mTerminalView);
         FileReceiverActivity.updateFileReceiverActivityComponentsState(this);
@@ -534,11 +542,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private void setTermuxSessionsListView() {
-        ListView termuxSessionsListView = findViewById(R.id.terminal_sessions_list);
+        RecyclerView sessionsRecyclerView = findViewById(R.id.terminal_sessions_list);
+        sessionsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         mTermuxSessionListViewController = new TermuxSessionsListViewController(this, mTermuxService.getTermuxSessions());
-        termuxSessionsListView.setAdapter(mTermuxSessionListViewController);
-        termuxSessionsListView.setOnItemClickListener(mTermuxSessionListViewController);
-        termuxSessionsListView.setOnItemLongClickListener(mTermuxSessionListViewController);
+        sessionsRecyclerView.setAdapter(mTermuxSessionListViewController);
     }
 
 
@@ -876,15 +883,62 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     @SuppressLint("RtlHardcoded")
     @Override
     public void onBackPressed() {
-        // Close whichever drawer is open (left sessions list or right quick tools)
-        // before allowing the activity to finish, so the back gesture never exits
-        // the app while a drawer is showing.
+        // Legacy fallback for pre-Android 13; OnBackPressedCallback handles the rest.
+        handleBackPressed();
+    }
+
+    /** Handle back press: close open drawer first, then finish. */
+    private void handleBackPressed() {
         if (getDrawer().isDrawerOpen(Gravity.LEFT)) {
             getDrawer().closeDrawer(Gravity.LEFT);
         } else if (getDrawer().isDrawerOpen(Gravity.RIGHT)) {
             getDrawer().closeDrawer(Gravity.RIGHT);
         } else {
             finishActivityIfNotFinishing();
+        }
+    }
+
+    /** Register the predictive-back callback (Android 13+) and sync with drawer state. */
+    private void setupPredictiveBack() {
+        androidx.activity.OnBackPressedCallback callback =
+            new androidx.activity.OnBackPressedCallback(false) {
+                @Override
+                public void handleOnBackPressed() {
+                    handleBackPressed();
+                    updateBackCallbackState();
+                }
+            };
+        getOnBackPressedDispatcher().addCallback(this, callback);
+
+        // Keep the callback enabled only when a drawer is open, so the system
+        // predictive-back animation plays correctly for exit (no drawer open).
+        getDrawer().addDrawerListener(new androidx.drawerlayout.widget.DrawerLayout.SimpleDrawerListener() {
+            @Override
+            public void onDrawerSlide(View drawerView, float slideOffset) {
+                updateBackCallbackState();
+            }
+
+            @Override
+            public void onDrawerOpened(View drawerView) {
+                updateBackCallbackState();
+            }
+
+            @Override
+            public void onDrawerClosed(View drawerView) {
+                updateBackCallbackState();
+            }
+        });
+
+        // Store reference for state updates
+        mBackCallback = callback;
+        updateBackCallbackState();
+    }
+
+    private void updateBackCallbackState() {
+        if (mBackCallback != null) {
+            boolean drawerOpen = getDrawer().isDrawerOpen(Gravity.LEFT)
+                || getDrawer().isDrawerOpen(Gravity.RIGHT);
+            mBackCallback.setEnabled(drawerOpen);
         }
     }
 

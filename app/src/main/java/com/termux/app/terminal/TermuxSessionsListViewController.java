@@ -12,12 +12,11 @@ import android.text.style.StyleSpan;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.termux.R;
 import com.termux.app.TermuxActivity;
@@ -28,40 +27,46 @@ import com.termux.terminal.TerminalSession;
 
 import java.util.List;
 
-public class TermuxSessionsListViewController extends ArrayAdapter<TermuxSession> implements AdapterView.OnItemClickListener, AdapterView.OnItemLongClickListener {
+public class TermuxSessionsListViewController extends RecyclerView.Adapter<TermuxSessionsListViewController.ViewHolder> {
 
     final TermuxActivity mActivity;
+    final List<TermuxSession> mSessions;
 
     final StyleSpan boldSpan = new StyleSpan(Typeface.BOLD);
     final StyleSpan italicSpan = new StyleSpan(Typeface.ITALIC);
 
     public TermuxSessionsListViewController(TermuxActivity activity, List<TermuxSession> sessionList) {
-        super(activity.getApplicationContext(), R.layout.item_terminal_sessions_list, sessionList);
         this.mActivity = activity;
+        this.mSessions = sessionList;
+    }
+
+    @NonNull
+    @Override
+    public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        View v = LayoutInflater.from(parent.getContext())
+            .inflate(R.layout.item_terminal_sessions_list, parent, false);
+        return new ViewHolder(v);
     }
 
     @SuppressLint("SetTextI18n")
-    @NonNull
     @Override
-    public View getView(int position, View convertView, @NonNull ViewGroup parent) {
-        View sessionRowView = convertView;
-        if (sessionRowView == null) {
-            LayoutInflater inflater = mActivity.getLayoutInflater();
-            sessionRowView = inflater.inflate(R.layout.item_terminal_sessions_list, parent, false);
+    public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
+        TermuxSession termuxSession = mSessions.get(position);
+        if (termuxSession == null) {
+            holder.title.setText("null session");
+            return;
         }
 
-        TextView sessionTitleView = sessionRowView.findViewById(R.id.session_title);
-
-        TerminalSession sessionAtRow = getItem(position).getTerminalSession();
+        TerminalSession sessionAtRow = termuxSession.getTerminalSession();
         if (sessionAtRow == null) {
-            sessionTitleView.setText("null session");
-            return sessionRowView;
+            holder.title.setText("null session");
+            return;
         }
 
         boolean shouldEnableDarkTheme = ThemeUtils.shouldEnableDarkTheme(mActivity, NightMode.getAppNightMode().getName());
 
         if (shouldEnableDarkTheme) {
-            sessionTitleView.setBackground(
+            holder.title.setBackground(
                 ContextCompat.getDrawable(mActivity, R.drawable.session_background_black_selected)
             );
         }
@@ -78,34 +83,50 @@ public class TermuxSessionsListViewController extends ArrayAdapter<TermuxSession
         fullSessionTitleStyled.setSpan(boldSpan, 0, numberPart.length() + sessionNamePart.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         fullSessionTitleStyled.setSpan(italicSpan, numberPart.length() + sessionNamePart.length(), fullSessionTitle.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 
-        sessionTitleView.setText(fullSessionTitleStyled);
+        holder.title.setText(fullSessionTitleStyled);
 
         boolean sessionRunning = sessionAtRow.isRunning();
 
         if (sessionRunning) {
-            sessionTitleView.setPaintFlags(sessionTitleView.getPaintFlags() & ~Paint.STRIKE_THRU_TEXT_FLAG);
+            holder.title.setPaintFlags(holder.title.getPaintFlags() & ~Paint.STRIKE_THRU_TEXT_FLAG);
         } else {
-            sessionTitleView.setPaintFlags(sessionTitleView.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
+            holder.title.setPaintFlags(holder.title.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
         }
         int defaultColor = shouldEnableDarkTheme ? Color.WHITE : Color.BLACK;
         int color = sessionRunning || sessionAtRow.getExitStatus() == 0 ? defaultColor : Color.RED;
-        sessionTitleView.setTextColor(color);
-        return sessionRowView;
+        holder.title.setTextColor(color);
+
+        // Click: switch to session
+        holder.itemView.setOnClickListener(v -> {
+            TermuxSession clickedSession = mSessions.get(holder.getAdapterPosition());
+            if (clickedSession != null) {
+                mActivity.getTermuxTerminalSessionClient().setCurrentSession(clickedSession.getTerminalSession());
+                mActivity.getDrawer().closeDrawers();
+            }
+        });
+
+        // Long click: rename / close menu
+        holder.itemView.setOnLongClickListener(v -> {
+            int pos = holder.getAdapterPosition();
+            if (pos == RecyclerView.NO_POSITION) return false;
+            TermuxSession selectedSession = mSessions.get(pos);
+            if (selectedSession == null) return false;
+            showSessionMenu(selectedSession.getTerminalSession());
+            return true;
+        });
     }
 
     @Override
-    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-        TermuxSession clickedSession = getItem(position);
-        mActivity.getTermuxTerminalSessionClient().setCurrentSession(clickedSession.getTerminalSession());
-        mActivity.getDrawer().closeDrawers();
+    public int getItemCount() {
+        return mSessions.size();
     }
 
-    @Override
-    public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
-        final TermuxSession selectedSession = getItem(position);
-        if (selectedSession == null) return false;
+    /** Refresh the list display (call after sessions change). */
+    public void notifyDataSetChangedSafely() {
+        notifyDataSetChanged();
+    }
 
-        final TerminalSession terminalSession = selectedSession.getTerminalSession();
+    private void showSessionMenu(TerminalSession terminalSession) {
         String currentName = terminalSession.mSessionName;
         if (currentName == null || currentName.isEmpty())
             currentName = mActivity.getString(R.string.action_new_session);
@@ -120,11 +141,6 @@ public class TermuxSessionsListViewController extends ArrayAdapter<TermuxSession
                     if (which == 0) {
                         mActivity.getTermuxTerminalSessionClient().renameSession(terminalSession);
                     } else if (which == 1) {
-                        // Kill the shell process, then fully remove and free the session
-                        // in one step. Passing processResult=false avoids the "press enter
-                        // to exit" leftover-shell state, and removeFinishedSession() cleans
-                        // up the TermuxSession bookkeeping and switches to a neighbor session.
-                        // Skip the confirm dialog when the user disabled it.
                         if (mActivity.getPreferences().shouldSkipSessionCloseConfirmation()) {
                             closeSessionNow(terminalSession);
                         } else {
@@ -134,7 +150,6 @@ public class TermuxSessionsListViewController extends ArrayAdapter<TermuxSession
                 })
             .setNegativeButton(R.string.tools_cancel, null)
             .show();
-        return true;
     }
 
     private void closeSessionNow(TerminalSession terminalSession) {
@@ -163,4 +178,12 @@ public class TermuxSessionsListViewController extends ArrayAdapter<TermuxSession
             .show();
     }
 
+    static class ViewHolder extends RecyclerView.ViewHolder {
+        final TextView title;
+
+        ViewHolder(View itemView) {
+            super(itemView);
+            title = itemView.findViewById(R.id.session_title);
+        }
+    }
 }
