@@ -273,5 +273,10 @@ task downloadBootstraps() {
 afterEvaluate {
     android.applicationVariants.all { variant ->
         variant.javaCompileProvider.get().dependsOn(downloadBootstraps)
+        // Upstream only wires downloadBootstraps to javaCompile, but ndk-build embeds
+        // the bootstrap zips via .incbin and may run before javaCompile (task order is
+        // not guaranteed). Wire it explicitly so the zips are always downloaded first.
+        tasks.matching { it.name.toLowerCase().contains("ndkbuild") || it.name.toLowerCase().contains("externalnativebuild") }
+            .configureEach { dependsOn downloadBootstraps }
     }
 }
