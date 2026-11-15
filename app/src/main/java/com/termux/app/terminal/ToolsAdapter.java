@@ -79,8 +79,19 @@ public class ToolsAdapter extends RecyclerView.Adapter<ToolsAdapter.ViewHolder> 
         holder.name.setText(tool.name);
         if (tool.isToggle()) {
             holder.stateDot.setVisibility(View.VISIBLE);
-            holder.stateDot.setTextColor(tool.state == null ? 0xFF9E9E9E
-                : tool.state == 1 ? 0xFF4CAF50 : 0xFFF44336);
+            // A just-started service may still be booting (SSH/code app/proxy can take
+            // 5-10s). Reporting a hard "off" during that window looks like a failure,
+            // so show the neutral "unknown" colour until the grace period expires.
+            boolean starting = tool.startGraceUntil > System.currentTimeMillis();
+            int color;
+            if (tool.state == null || (tool.state == 0 && starting)) {
+                color = 0xFF9E9E9E; // unknown / still starting
+            } else if (tool.state == 1) {
+                color = 0xFF4CAF50; // on
+            } else {
+                color = 0xFFF44336; // off
+            }
+            holder.stateDot.setTextColor(color);
         } else {
             holder.stateDot.setVisibility(View.GONE);
         }

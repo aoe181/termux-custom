@@ -80,7 +80,21 @@
 |---|---|
 | 管理模式 | 标题栏 ≡ 进入：**点图标=编辑**、**长按=拖动排序**、按钮变 ✓；关闭抽屉自动退出并落盘。正常模式点=运行，长按不响应 |
 | 角标不闪 | 开抽屉重读 ZDY.json 时按 `(id, checkCommand)` 把旧 `state` 搬过去，不再全变灰 |
-| 检查去重 | 按轮次(generation)去重：同一轮内重复触发不叠加进程；换轮后旧结果直接丢弃；用户点击开关走 `refreshToggleStateForced` 强制开新轮 |
+| 检查去重 | 按工具 token 去重：在途检查复用不叠加进程；点开关只作废该工具的旧结果 |
+
+### 稳定性与数据安全（2026-11-16）
+| 修复 | 说明 |
+|---|---|
+| 编辑框不丢输入 | `setPositiveButton(null)` + `setOnShowListener`，校验失败时对话框不关闭（默认行为会关并丢光输入） |
+| ZDY.json 损坏备份 | 解析失败时先存 `ZDY.json.corrupt`，避免下一次 save 永久覆盖原内容 |
+| 原子写盘 | 写 `.tmp` + `renameTo()`，中断写不会留下半截文件 |
+| 会话上限保护 | 会话满 8 个时 `addNewSession` 静默失败，原逻辑会把命令打进当前 TUI；加 `newSession == session` 判定 |
+| 检查去重(按工具) | token 按工具而非全局，点一个开关不再作废其它工具的检查结果；在途检查复用不叠加进程 |
+| 删除确认 | 删工具二次确认（命令可能是很长的单行） |
+| 添加后滚动 | 新工具追加到末尾并滚动到可见 |
+| 保存失败提示 | `ToolStore.save()` 返回 false 时 Toast 提示 |
+| API 24 兼容 | 移除 `java.nio.file.Files`（API 26），改用 `java.io`/`FileUtils`；`NoClassDefFoundError` 不被 `catch(Exception)` 捕获 |
+| 慢启动宽限 | 点开启后 10s 内"检测为关"显示灰色而非红色；仅开启方向生效，10s 后安排一次纯重绘 |
 
 ## 测试方法
 

@@ -29,6 +29,10 @@ public class ToolItem {
     /** Runtime state cache for toggle tools: null = unknown, 0 = off, 1 = on. Not persisted. */
     public transient Integer state;
 
+    /** Wall-clock deadline (ms) while a just-started service may still be booting. While it
+     *  is in the future, an "off" check result is shown as unknown rather than a failure. */
+    public transient long startGraceUntil;
+
     public ToolItem(String name, String icon, String command) {
         this.id = UUID.randomUUID().toString();
         this.name = name;

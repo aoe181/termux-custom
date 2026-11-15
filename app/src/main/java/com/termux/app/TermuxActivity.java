@@ -131,8 +131,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     /** Toggle checks currently in flight, mapped to the refresh round that started them. */
     private final java.util.Map<String, Long> mToggleChecksInFlight = new java.util.HashMap<>();
 
-    /** Bumped whenever a fresh check round starts; stale results from older rounds are dropped. */
-    private long mToggleCheckGeneration = 0;
+    /** Per-tool check tokens. Bumped when a tool's fresh check must invalidate an older
+     *  in-flight result. Per tool (not global) so rechecking one tool does not discard
+     *  the results of other tools that are still running. */
+    private final java.util.Map<String, Long> mToggleCheckToken = new java.util.HashMap<>();
 
     /** Predictive back callback (Android 13+). */
     private androidx.activity.OnBackPressedCallback mBackCallback;
@@ -672,12 +674,24 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 // Clear the badge, then re-check once the toggle has run; the late
                 // re-check catches slow starts (e.g. yingshi waits up to 10s).
                 if (tool.isToggle()) {
+                    // Grace period applies only when starting something: a service that is
+                    // being stopped reports "off" almost immediately and must show red, not
+                    // wait out the boot window.
+                    boolean wasOn = tool.state != null && tool.state == 1;
                     tool.state = null;
+                    tool.startGraceUntil = wasOn ? 0 : System.currentTimeMillis() + TOGGLE_START_GRACE_MS;
                     mToolsAdapter.notifyDataSetChanged();
                     // Forced recheck invalidates any result still in flight from before the
                     // toggle ran, so a stale pre-toggle state cannot land after the reset.
                     new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> refreshToggleStateForced(tool), 800);
                     new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> refreshToggleState(tool), 3000);
+                    // Repaint only (no command, no process) once the grace period ends, so
+                    // a still-off badge turns red instead of sitting grey forever.
+                    if (tool.startGraceUntil > 0) {
+                        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                            if (mToolsAdapter != null) mToolsAdapter.notifyDataSetChanged();
+                        }, TOGGLE_START_GRACE_MS);
+                    }
                 }
             }
 
@@ -795,45 +809,48 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         refreshAllToggleStates();
     }
 
+    /** How long after tapping a toggle an "off" result is shown as unknown instead of
+     *  failed, covering services that need several seconds to finish starting. */
+    private static final long TOGGLE_START_GRACE_MS = 10000;
+
     /** Re-check one toggle tool's state (runs checkCommand off the UI thread). */
     private void refreshToggleState(ToolItem tool) {
         refreshToggleState(tool, false);
     }
 
-    /** Re-check after the user actually toggled something: always start a new round so
-     *  the pre-toggle state cannot be shown as the result. */
+    /** Re-check after the user toggled something: invalidate this tool's older in-flight
+     *  result so a pre-toggle state cannot land, without disturbing other tools. */
     private void refreshToggleStateForced(ToolItem tool) {
         synchronized (mToggleChecksInFlight) {
-            mToggleCheckGeneration++;
+            Long token = mToggleCheckToken.get(tool.id);
+            mToggleCheckToken.put(tool.id, token == null ? 1L : token + 1L);
         }
         refreshToggleState(tool, true);
     }
 
-    /** @param force start even if a check for this tool is already running */
+    /** @param force start a check even if one for this tool is already running */
     private void refreshToggleState(ToolItem tool, boolean force) {
         if (!tool.isToggle()) return;
-        // A check for this tool started in this same round is still running; its
-        // result is fresh enough, so don't stack another process on quick reopen.
-        final long generation;
+        final long token;
         synchronized (mToggleChecksInFlight) {
-            if (!force) {
-                Long running = mToggleChecksInFlight.get(tool.id);
-                if (running != null && running == mToggleCheckGeneration) return;
-            }
-            generation = mToggleCheckGeneration;
-            mToggleChecksInFlight.put(tool.id, generation);
+            Long tokenObj = mToggleCheckToken.get(tool.id);
+            token = tokenObj == null ? 0L : tokenObj;
+            // Same token still in flight means the running check is already this fresh.
+            Long running = mToggleChecksInFlight.get(tool.id);
+            if (!force && running != null && running.longValue() == token) return;
+            mToggleChecksInFlight.put(tool.id, token);
         }
         final String checkCommand = tool.checkCommand;
         new Thread(() -> {
             Integer state = runToggleCheck(checkCommand);
-            boolean currentRound;
             synchronized (mToggleChecksInFlight) {
-                // Only clear the slot if this round still owns it.
-                if (Long.valueOf(generation).equals(mToggleChecksInFlight.get(tool.id)))
+                // Only clear the slot if this attempt still owns it.
+                if (Long.valueOf(token).equals(mToggleChecksInFlight.get(tool.id)))
                     mToggleChecksInFlight.remove(tool.id);
-                currentRound = generation == mToggleCheckGeneration;
+                Long tokenObj = mToggleCheckToken.get(tool.id);
+                long currentToken = tokenObj == null ? 0L : tokenObj;
+                if (token != currentToken) return; // superseded by a forced recheck
             }
-            if (!currentRound) return; // superseded; the newer round already re-checks
             runOnUiThread(() -> {
                 // The command may have been edited while the check was running.
                 if (!checkCommand.equals(tool.checkCommand)) return;
@@ -847,7 +864,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private void refreshAllToggleStates() {
         if (mToolsAdapter == null) return;
         synchronized (mToggleChecksInFlight) {
-            mToggleCheckGeneration++;
+            // Bump a tool's token only when no check for it is currently running: a check
+            // still in flight is already this fresh, so reusing it (instead of bumping)
+            // keeps rapid drawer reopens from stacking processes.
+            for (ToolItem t : mToolsAdapter.getTools()) {
+                if (!t.isToggle()) continue;
+                if (mToggleChecksInFlight.containsKey(t.id)) continue;
+                Long token = mToggleCheckToken.get(t.id);
+                mToggleCheckToken.put(t.id, token == null ? 1L : token + 1L);
+            }
         }
         for (ToolItem t : mToolsAdapter.getTools()) {
             if (t.isToggle()) refreshToggleState(t);
@@ -893,6 +918,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (session == null || !session.isRunning() || sessionBusy) {
             mTermuxTerminalSessionActivityClient.addNewSession(false, null);
             TerminalSession newSession = getCurrentSession();
+            // addNewSession() silently bails out when the session limit is reached, leaving
+            // the previous (busy/dead) session current. Writing into it would dump the
+            // command into a TUI or a dead shell, so only paste when a usable session that
+            // is not the one we tried to escape is actually available.
+            if (newSession == session) return;
             if (newSession != null && newSession.isRunning()
                 && newSession.getEmulator() != null) {
                 newSession.getEmulator().paste(command);
@@ -923,7 +953,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             manageButton.setAlpha(0.6f);
             manageButton.clearColorFilter();
             // Persist the (possibly new) order on exit.
-            ToolStore.save(this, mToolsAdapter.getTools());
+            if (!ToolStore.save(this, mToolsAdapter.getTools()))
+                Logger.showToast(this, getString(R.string.tools_save_failed), false);
         }
     }
 
@@ -943,13 +974,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         // URLs don't confuse detection.
         String currentHost = null;
         try {
-            java.io.File f = new java.io.File(
-                TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/etc/apt/sources.list");
-            if (f.exists()) {
-                String content = new String(java.nio.file.Files.readAllBytes(f.toPath()),
-                    java.nio.charset.StandardCharsets.UTF_8);
+            StringBuilder data = new StringBuilder();
+            // FileUtils instead of java.nio.file.Files: the latter needs API 26 and its
+            // absence throws NoClassDefFoundError, which "catch (Exception)" cannot catch.
+            if (com.termux.shared.file.FileUtils.readTextFromFile(LOG_TAG,
+                    TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/etc/apt/sources.list",
+                    java.nio.charset.StandardCharsets.UTF_8, data, true) == null) {
                 java.util.regex.Matcher m = java.util.regex.Pattern
-                    .compile("deb\\s+https?://([^/ ]+)").matcher(content);
+                    .compile("deb\\s+https?://([^/ ]+)").matcher(data.toString());
                 if (m.find()) currentHost = m.group(1);
             }
         } catch (Exception ignored) {
@@ -965,15 +997,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             .setTitle(getString(R.string.tools_mirror_switch_title))
             .setItems(names, (dialog, which) -> {
                 String url = mirrors[which][1];
-                TerminalSession session = getCurrentSession();
-                if (session == null || !session.isRunning()) {
-                    Logger.showToast(this, getString(R.string.tools_no_session), false);
-                    return;
-                }
                 // Replace any termux-main URL regardless of path variant.
                 String cmd = "sed -i 's|https://[^ ]*termux-main|" + url + "|g' $PREFIX/etc/apt/sources.list && echo \"已切换到: " + url + "\" && pkg update";
-                session.getEmulator().paste(cmd);
-                session.write("\r");
+                // Route like every other tool: a busy TUI session would otherwise swallow
+                // the command as input instead of running it in a shell.
+                runDrawerCommand(cmd);
             })
             .setNegativeButton(R.string.tools_cancel, null)
             .show();
@@ -1010,22 +1038,56 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         checkInput.setMaxLines(2);
         container.addView(checkInput);
 
-        new AlertDialog.Builder(this)
+        final AlertDialog dialog = new AlertDialog.Builder(this)
             .setTitle(isNew ? R.string.tools_new_title : R.string.tools_edit_title)
             .setView(container)
-            .setPositiveButton(isNew ? R.string.tools_save : R.string.tools_save, (dialog, which) -> {
+            // Null listener: the positive button must NOT auto-dismiss, otherwise a
+            // validation failure would close the dialog and silently discard everything
+            // the user typed.
+            .setPositiveButton(R.string.tools_save, null)
+            .setNeutralButton(R.string.tools_delete, (d, which) -> {
+                if (!isNew) {
+                    // Confirm: a mis-tap here destroys the tool and its command, which can
+                    // be a long one-liner that is painful to retype.
+                    new AlertDialog.Builder(this)
+                        .setTitle(R.string.tools_delete)
+                        .setMessage(getString(R.string.tools_delete_confirm, tool.name))
+                        .setPositiveButton(R.string.tools_delete, (cd, cw) -> {
+                            mToolsAdapter.removeTool(tool);
+                            // Drop any in-flight check slot for the removed tool.
+                            synchronized (mToggleChecksInFlight) {
+                                mToggleChecksInFlight.remove(tool.id);
+                                mToggleCheckToken.remove(tool.id);
+                            }
+                            if (!ToolStore.save(this, mToolsAdapter.getTools()))
+                                Logger.showToast(this, getString(R.string.tools_save_failed), false);
+                            dialog.dismiss();
+                        })
+                        .setNegativeButton(R.string.tools_cancel, null)
+                        .show();
+                }
+            })
+            .setNegativeButton(R.string.tools_cancel, null)
+            .create();
+
+        dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            .setOnClickListener(v -> {
                 String name = nameInput.getText().toString().trim();
                 String icon = iconInput.getText().toString().trim();
                 String command = commandInput.getText().toString();
                 String check = checkInput.getText().toString().trim();
                 if (name.isEmpty() || command.isEmpty()) {
                     Logger.showToast(this, getString(R.string.tools_empty_error), false);
-                    return;
+                    return; // keep the dialog open with the input intact
                 }
                 if (isNew) {
                     ToolItem t = new ToolItem(name, icon, command);
                     t.checkCommand = check;
                     mToolsAdapter.addTool(t);
+                    // New tools are appended to the end; scroll so the user can see that it
+                    // was actually added instead of staring at an unchanged grid.
+                    RecyclerView grid = findViewById(R.id.tools_recycler_view);
+                    if (grid != null) grid.smoothScrollToPosition(mToolsAdapter.getItemCount() - 1);
                 } else {
                     tool.name = name;
                     tool.icon = icon;
@@ -1034,21 +1096,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     tool.state = null;
                     mToolsAdapter.notifyDataSetChanged();
                 }
-                ToolStore.save(this, mToolsAdapter.getTools());
+                if (!ToolStore.save(this, mToolsAdapter.getTools()))
+                    Logger.showToast(this, getString(R.string.tools_save_failed), false);
                 refreshAllToggleStates();
-            })
-            .setNeutralButton(R.string.tools_delete, (dialog, which) -> {
-                if (!isNew) {
-                    mToolsAdapter.removeTool(tool);
-                    // Drop any in-flight check slot for the removed tool.
-                    synchronized (mToggleChecksInFlight) {
-                        mToggleChecksInFlight.remove(tool.id);
-                    }
-                    ToolStore.save(this, mToolsAdapter.getTools());
-                }
-            })
-            .setNegativeButton(R.string.tools_cancel, null)
-            .show();
+                dialog.dismiss();
+            }));
+
+        dialog.show();
     }
 
 
