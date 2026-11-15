@@ -646,6 +646,10 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
             if (sessionToRemove.isRunning())
                 sessionToRemove.finishIfRunning();
             mShellManager.mTermuxSessions.remove(index);
+            // The normal cleanup chain (TermuxSession.finish() -> onTermuxSessionExited()
+            // -> updateNotification()) is skipped for killed sessions, so refresh the
+            // notification here or the session count goes stale.
+            updateNotification();
         }
         return index;
     }
