@@ -786,9 +786,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     /** Run a toggle tool's check command outside the terminal; exit code 0 = on. */
     private Integer runToggleCheck(String cmd) {
         try {
-            Process p = new ProcessBuilder(
+            ProcessBuilder pb = new ProcessBuilder(
                 TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/bin/bash", "-c", cmd)
-                .redirectErrorStream(true).start();
+                .redirectErrorStream(true);
+            // The app process' PATH doesn't include the Termux bin dir (this runs
+            // outside a session), so commands like curl/pidof/jq wouldn't resolve.
+            String path = pb.environment().get("PATH");
+            pb.environment().put("PATH", TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/bin"
+                + (path != null && !path.isEmpty() ? ":" + path : ""));
+            Process p = pb.start();
             if (!p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) {
                 p.destroy();
                 return null;
