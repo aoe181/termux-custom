@@ -983,6 +983,17 @@ public final class TerminalView extends View {
 
     /** Check if the terminal size in rows and columns should be updated. */
     public void updateSize() {
+        long _t0 = android.os.SystemClock.elapsedRealtimeNanos();
+        try {
+            updateSizeInner();
+        } finally {
+            long _dt = android.os.SystemClock.elapsedRealtimeNanos() - _t0;
+            if (_dt > 16000000L)
+                android.util.Log.w("TerminalView", "PERF updateSize slow: " + (_dt / 1000000L) + "ms");
+        }
+    }
+
+    private void updateSizeInner() {
         int viewWidth = getWidth();
         int viewHeight = getHeight();
         if (viewWidth == 0 || viewHeight == 0 || mTermSession == null) return;
@@ -1020,6 +1031,17 @@ public final class TerminalView extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
+        long _t0 = android.os.SystemClock.elapsedRealtimeNanos();
+        try {
+            onDrawInner(canvas);
+        } finally {
+            long _dt = android.os.SystemClock.elapsedRealtimeNanos() - _t0;
+            if (_dt > 16000000L)
+                android.util.Log.w("TerminalView", "PERF onDraw slow: " + (_dt / 1000000L) + "ms");
+        }
+    }
+
+    private void onDrawInner(Canvas canvas) {
         if (mEmulator == null) {
             canvas.drawColor(0XFF000000);
         } else {
