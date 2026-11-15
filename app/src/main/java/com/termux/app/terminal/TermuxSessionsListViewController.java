@@ -162,8 +162,9 @@ public class TermuxSessionsListViewController extends RecyclerView.Adapter<Termu
         if (size == 0) {
             // No sessions left; close the activity.
             mActivity.finishActivityIfNotFinishing();
-        } else {
-            // Switch to a neighbor session.
+        } else if (terminalSession == mActivity.getCurrentSession()) {
+            // Only jump to a neighbor when the closed session was the one being
+            // viewed; closing a background session must not move the view.
             if (index >= size) index = size - 1;
             if (index < 0) index = 0;
             com.termux.shared.termux.shell.command.runner.terminal.TermuxSession next =

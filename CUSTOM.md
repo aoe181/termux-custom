@@ -27,7 +27,7 @@
 - 产物两个 arm64 APK，**同签名可互相覆盖安装**，但不可与官方包共存：
   - `..._github-release_arm64-v8a.apk`：R8、非 debuggable、省内存（日常用）
   - `..._github-debug_arm64-v8a.apk`：debuggable，`htop`/`ps`/`logcat` 可见本体进程（调试用）
-- release **自动保留最近 3 个**，旧的连 tag 自动删除（workflow 内置）
+- release **自动保留最近 8 个**，旧的连 tag 自动删除（workflow 内置）
 - 网络问题：push 偶发 `SSL_read: unexpected eof`，重试即可
 
 ## 改动清单（相对上游）
