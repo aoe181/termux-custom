@@ -99,7 +99,7 @@
                 android:layout_width="260dp"
                 android:layout_height="match_parent"
                 android:layout_gravity="end"
-                android:descendantFocusability="afterDescendants"
+                android:descendantFocusability="blocksDescendants"
                 android:orientation="vertical"
                 android:background="?attr/termuxActivityDrawerBackground">
 
@@ -145,63 +145,6 @@
                     android:layout_height="wrap_content"
                     android:text="@string/tools_add_tool" />
 
-                <!-- Notes area: collapsible command list, one command per line in ~/.termux/ZDY-note.txt.
-                     Tap a line to run it in the session (same smart routing as tools);
-                     long-press to edit/delete a line. -->
-                <LinearLayout
-                    android:id="@+id/notes_section"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:paddingHorizontal="8dp"
-                    android:paddingBottom="8dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:paddingHorizontal="4dp"
-                            android:paddingVertical="6dp"
-                            android:text="@string/tools_notes_title"
-                            android:textSize="13sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/notes_toggle"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:padding="8dp"
-                            android:text="▸"
-                            android:textSize="14sp" />
-                    </LinearLayout>
-
-                    <ScrollView
-                        android:id="@+id/notes_scroll"
-                        android:layout_width="match_parent"
-                        android:layout_height="130dp"
-                        android:visibility="gone">
-
-                        <LinearLayout
-                            android:id="@+id/notes_list"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="vertical" />
-                    </ScrollView>
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/notes_add_button"
-                        style="?android:attr/buttonBarButtonStyle"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/tools_notes_add"
-                        android:visibility="gone" />
-                </LinearLayout>
             </LinearLayout>
 
         </androidx.drawerlayout.widget.DrawerLayout>

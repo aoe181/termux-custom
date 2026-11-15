@@ -48,7 +48,13 @@ public class ToolsAdapter extends RecyclerView.Adapter<ToolsAdapter.ViewHolder> 
     public boolean moveItem(int fromPosition, int toPosition) {
         if (fromPosition < 0 || fromPosition >= mTools.size()
             || toPosition < 0 || toPosition >= mTools.size()) return false;
-        Collections.swap(mTools, fromPosition, toPosition);
+        // Stepwise adjacent swaps: a single Collections.swap() would corrupt the
+        // order when the drag spans more than one position (fast drags).
+        if (fromPosition < toPosition) {
+            for (int i = fromPosition; i < toPosition; i++) Collections.swap(mTools, i, i + 1);
+        } else {
+            for (int i = fromPosition; i > toPosition; i--) Collections.swap(mTools, i, i - 1);
+        }
         notifyItemMoved(fromPosition, toPosition);
         return true;
     }

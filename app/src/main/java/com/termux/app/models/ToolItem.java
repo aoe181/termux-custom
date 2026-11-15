@@ -80,13 +80,18 @@ public class ToolItem {
         return arr.toString(2);
     }
 
-    /** Parse a JSON string back to a list of tools. Returns null on error. */
+    /** Parse a JSON string back to a list of tools. Returns null on error.
+     *  Malformed entries are skipped instead of failing (and thus resetting) the whole list. */
     public static List<ToolItem> listFromJson(String json) {
         try {
             JSONArray arr = new JSONArray(json);
             List<ToolItem> tools = new ArrayList<>();
             for (int i = 0; i < arr.length(); i++) {
-                tools.add(ToolItem.fromJson(arr.getJSONObject(i)));
+                try {
+                    tools.add(ToolItem.fromJson(arr.getJSONObject(i)));
+                } catch (JSONException e) {
+                    // Skip just this entry; a single bad tool must not wipe the user's config.
+                }
             }
             return tools;
         } catch (JSONException e) {
