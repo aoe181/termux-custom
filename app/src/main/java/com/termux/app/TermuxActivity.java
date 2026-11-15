@@ -738,6 +738,23 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         findViewById(R.id.tools_reorder_button).setOnClickListener(v -> toggleToolsReorderMode());
         findViewById(R.id.add_tool_button).setOnClickListener(v -> showToolEditDialog(null));
 
+        // Reload tools when the right drawer opens: the list is otherwise only loaded
+        // in onCreate, so external edits to ZDY.json would be clobbered by the next
+        // in-app save (drag/edit). Also refreshes toggle badges on every open.
+        getDrawer().addDrawerListener(new androidx.drawerlayout.widget.DrawerLayout.SimpleDrawerListener() {
+            @Override
+            public void onDrawerOpened(View drawerView) {
+                if (drawerView.getId() != R.id.right_drawer) return;
+                if (mToolsReorderMode || mToolsAdapter == null) return;
+                List<ToolItem> fresh = ToolStore.load(TermuxActivity.this);
+                List<ToolItem> current = mToolsAdapter.getTools();
+                current.clear();
+                current.addAll(fresh);
+                mToolsAdapter.notifyDataSetChanged();
+                refreshAllToggleStates();
+            }
+        });
+
         // Initial state check for toggle tools.
         refreshAllToggleStates();
     }
