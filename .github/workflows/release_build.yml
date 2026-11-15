@@ -98,3 +98,12 @@ jobs:
           - 两包同签名, 可互相覆盖安装, 但不可与官方包共存" \
             "${{ steps.apk.outputs.release }}" \
             "${{ steps.apk.outputs.debug }}"
+
+      - name: Cleanup old pre-releases (keep newest 3)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=30" \
+            --jq '.[3:] | .[] | .tag_name' | while read -r tag; do
+              [ -n "$tag" ] && gh release delete "$tag" --yes --cleanup-tag && echo "deleted $tag"
+            done
