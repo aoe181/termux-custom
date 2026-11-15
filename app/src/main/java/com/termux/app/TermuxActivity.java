@@ -1041,37 +1041,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         final AlertDialog dialog = new AlertDialog.Builder(this)
             .setTitle(isNew ? R.string.tools_new_title : R.string.tools_edit_title)
             .setView(container)
-            // Null listener: the positive button must NOT auto-dismiss, otherwise a
-            // validation failure would close the dialog and silently discard everything
-            // the user typed.
+            // Null listeners: the buttons must NOT auto-dismiss, otherwise a validation
+            // failure would close the dialog and silently discard everything typed.
             .setPositiveButton(R.string.tools_save, null)
-            .setNeutralButton(R.string.tools_delete, (d, which) -> {
-                if (!isNew) {
-                    // Confirm: a mis-tap here destroys the tool and its command, which can
-                    // be a long one-liner that is painful to retype.
-                    new AlertDialog.Builder(this)
-                        .setTitle(R.string.tools_delete)
-                        .setMessage(getString(R.string.tools_delete_confirm, tool.name))
-                        .setPositiveButton(R.string.tools_delete, (cd, cw) -> {
-                            mToolsAdapter.removeTool(tool);
-                            // Drop any in-flight check slot for the removed tool.
-                            synchronized (mToggleChecksInFlight) {
-                                mToggleChecksInFlight.remove(tool.id);
-                                mToggleCheckToken.remove(tool.id);
-                            }
-                            if (!ToolStore.save(this, mToolsAdapter.getTools()))
-                                Logger.showToast(this, getString(R.string.tools_save_failed), false);
-                            dialog.dismiss();
-                        })
-                        .setNegativeButton(R.string.tools_cancel, null)
-                        .show();
-                }
-            })
+            .setNeutralButton(R.string.tools_delete, null)
             .setNegativeButton(R.string.tools_cancel, null)
             .create();
 
-        dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
-            .setOnClickListener(v -> {
+        dialog.setOnShowListener(d -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
                 String name = nameInput.getText().toString().trim();
                 String icon = iconInput.getText().toString().trim();
                 String command = commandInput.getText().toString();
@@ -1100,7 +1078,30 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     Logger.showToast(this, getString(R.string.tools_save_failed), false);
                 refreshAllToggleStates();
                 dialog.dismiss();
-            }));
+            });
+
+            // Delete needs its own confirmation: a mis-tap would destroy the tool and its
+            // command, which can be a long one-liner that is painful to retype.
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+                if (isNew) return;
+                new AlertDialog.Builder(this)
+                    .setTitle(R.string.tools_delete)
+                    .setMessage(getString(R.string.tools_delete_confirm, tool.name))
+                    .setPositiveButton(R.string.tools_delete, (cd, cw) -> {
+                        mToolsAdapter.removeTool(tool);
+                        // Drop any in-flight check slot for the removed tool.
+                        synchronized (mToggleChecksInFlight) {
+                            mToggleChecksInFlight.remove(tool.id);
+                            mToggleCheckToken.remove(tool.id);
+                        }
+                        if (!ToolStore.save(this, mToolsAdapter.getTools()))
+                            Logger.showToast(this, getString(R.string.tools_save_failed), false);
+                        dialog.dismiss();
+                    })
+                    .setNegativeButton(R.string.tools_cancel, null)
+                    .show();
+            });
+        });
 
         dialog.show();
     }
