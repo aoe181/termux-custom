@@ -37,18 +37,6 @@ public final class TerminalRenderer {
 
     private final float[] asciiMeasures = new float[127];
 
-    /** Cache of measured widths for non-ascii code points, keyed by code point,
-     *  with values stored as {@link Float#floatToRawIntBits}. Without this, CJK text
-     *  (where every code point is non-ascii) calls {@link Paint#measureText} for every
-     *  character on every frame. */
-    private final android.util.SparseIntArray mCodePointWidthCache = new android.util.SparseIntArray();
-
-    /** Reused for sixtel bitmap drawing to avoid per-cell allocations in the render loop. */
-    private final RectF mBitmapDestRect = new RectF();
-
-    /** Reused to query canvas clip bounds at the start of {@link #render}. */
-    private final Rect mClipRect = new Rect();
-
     public TerminalRenderer(int textSize, Typeface typeface) {
         mTextSize = textSize;
         mTypeface = typeface;
@@ -85,17 +73,9 @@ public final class TerminalRenderer {
         if (reverseVideo)
             canvas.drawColor(palette[TextStyle.COLOR_INDEX_FOREGROUND], PorterDuff.Mode.SRC);
 
-        // Skip rows outside the current clip bounds (an optimization for partial
-        // invalidation, e.g. cursor blink). On hardware-accelerated canvases the clip
-        // is usually the full view, so this is a no-op there.
-        final Rect clipBounds = mClipRect;
-        canvas.getClipBounds(clipBounds);
-
         float heightOffset = mFontLineSpacingAndAscent;
         for (int row = topRow; row < endRow; row++) {
             heightOffset += mFontLineSpacing;
-            if (heightOffset < clipBounds.top || heightOffset - mFontLineSpacing > clipBounds.bottom)
-                continue;
 
             final int cursorX = (row == cursorRow && cursorVisible) ? cursorCol : -1;
             int selx1 = -1, selx2 = -1;
@@ -129,8 +109,8 @@ public final class TerminalRenderer {
                         float left = column * mFontWidth;
                         float top = heightOffset - mFontLineSpacing;
                         Rect bitmapSrcRect = mEmulator.getScreen().getSixelRect(style);
-                        mBitmapDestRect.set(left, top, left + mFontWidth, top + mFontLineSpacing);
-                        canvas.drawBitmap(bitmap, bitmapSrcRect, mBitmapDestRect, null);
+                        RectF bitmapDestRect = new RectF(left, top, left + mFontWidth, top + mFontLineSpacing);
+                        canvas.drawBitmap(bitmap, bitmapSrcRect, bitmapDestRect, null);
                     }
                     column += 1;
                     measuredWidthForRun = 0.f;
@@ -150,27 +130,11 @@ public final class TerminalRenderer {
                 // This could happen for some fonts which are not truly monospace, or for more exotic characters such as
                 // smileys which android font renders as wide.
                 // If this is detected, we draw this code point scaled to match what wcwidth() expects.
-                final float measuredCodePointWidth;
-                if (codePoint < asciiMeasures.length) {
-                    measuredCodePointWidth = asciiMeasures[codePoint];
-                } else {
-                    final int cachedBits = mCodePointWidthCache.get(codePoint, 0);
-                    if (cachedBits != 0) {
-                        measuredCodePointWidth = Float.intBitsToFloat(cachedBits);
-                    } else {
-                        measuredCodePointWidth = mTextPaint.measureText(line, currentCharIndex, charsForCodePoint);
-                        mCodePointWidthCache.put(codePoint, Float.floatToRawIntBits(measuredCodePointWidth));
-                    }
-                }
+                final float measuredCodePointWidth = (codePoint < asciiMeasures.length) ? asciiMeasures[codePoint] : mTextPaint.measureText(line,
+                    currentCharIndex, charsForCodePoint);
                 final boolean fontWidthMismatch = Math.abs(measuredCodePointWidth / mFontWidth - codePointWcWidth) > 0.01;
 
-                // Only break the text run when the width-mismatch status *changes*.
-                // Breaking whenever either side is mismatched (as previously done) made
-                // every CJK character its own run (since fallback CJK glyphs never match
-                // the expected 2-cell width exactly), costing a canvas save/scale/restore
-                // and a drawTextRun call per character. Consecutive mismatched chars with
-                // similar width ratios (e.g. runs of CJK) can safely share one scaled run.
-                if (style != lastRunStyle || insideCursor != lastRunInsideCursor || insideSelection != lastRunInsideSelection || fontWidthMismatch != lastRunFontWidthMismatch) {
+                if (style != lastRunStyle || insideCursor != lastRunInsideCursor || insideSelection != lastRunInsideSelection || fontWidthMismatch || lastRunFontWidthMismatch) {
                     if (column == 0 || column == lastRunStartColumn) {
                         // Skip first column as there is nothing to draw, just record the current style.
                     } else {
