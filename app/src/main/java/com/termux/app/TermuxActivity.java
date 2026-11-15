@@ -1050,16 +1050,28 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setDraggerEdgeSize("mRightDragger", mDrawerEdgeSizePx);
     }
 
+    /** Cached DrawerLayout dragger Field lookups; getDeclaredField scans class metadata
+     *  and is expensive, while onGlobalLayout() calls this on every layout pass. */
+    private static final java.util.Map<String, java.lang.reflect.Field> sDraggerFields = new java.util.HashMap<>();
+    /** Set once a reflective access fails so we neither retry nor spam logcat every layout. */
+    private static boolean sDraggerFieldsUnavailable = false;
+
     private void setDraggerEdgeSize(String fieldName, int edgePx) {
+        if (sDraggerFieldsUnavailable) return;
         try {
-            java.lang.reflect.Field f = DrawerLayout.class.getDeclaredField(fieldName);
-            f.setAccessible(true);
+            java.lang.reflect.Field f = sDraggerFields.get(fieldName);
+            if (f == null) {
+                f = DrawerLayout.class.getDeclaredField(fieldName);
+                f.setAccessible(true);
+                sDraggerFields.put(fieldName, f);
+            }
             Object dragger = f.get(getDrawer());
             if (dragger instanceof androidx.customview.widget.ViewDragHelper) {
                 ((androidx.customview.widget.ViewDragHelper) dragger).setEdgeSize(edgePx);
             }
         } catch (Exception e) {
-            Logger.logError(LOG_TAG, "setDraggerEdgeSize failed: " + e.getMessage());
+            sDraggerFieldsUnavailable = true;
+            Logger.logError(LOG_TAG, "setDraggerEdgeSize failed, edge customization disabled: " + e.getMessage());
         }
     }
 

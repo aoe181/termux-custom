@@ -134,7 +134,14 @@ public final class TerminalRenderer {
                     currentCharIndex, charsForCodePoint);
                 final boolean fontWidthMismatch = Math.abs(measuredCodePointWidth / mFontWidth - codePointWcWidth) > 0.01;
 
-                if (style != lastRunStyle || insideCursor != lastRunInsideCursor || insideSelection != lastRunInsideSelection || fontWidthMismatch || lastRunFontWidthMismatch) {
+                // Only break the text run when the width-mismatch status *changes*.
+                // Breaking whenever either side is mismatched (old behavior) makes every
+                // CJK character its own run — fallback CJK glyphs never match the expected
+                // 2-cell width exactly — costing a canvas save/scale/restore + drawTextRun
+                // per character. Consecutive similar-ratio chars (runs of CJK) safely share
+                // one scaled run. Normal chars are still separated from mismatched ones so
+                // they are never distorted by the scale.
+                if (style != lastRunStyle || insideCursor != lastRunInsideCursor || insideSelection != lastRunInsideSelection || fontWidthMismatch != lastRunFontWidthMismatch) {
                     if (column == 0 || column == lastRunStartColumn) {
                         // Skip first column as there is nothing to draw, just record the current style.
                     } else {
