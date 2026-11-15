@@ -659,26 +659,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     return;
                 }
 
-                TerminalSession session = getCurrentSession();
-                boolean sessionBusy = session != null && session.isRunning()
-                    // A TUI/fullscreen app (opencode, vim, htop, ...) is active in the
-                    // current session, so run the command in a fresh session instead.
-                    && session.getEmulator() != null && session.getEmulator().isAlternateBufferActive();
-
-                if (session == null || sessionBusy) {
-                    // Create a new session, then run the tool command in it.
-                    mTermuxTerminalSessionActivityClient.addNewSession(false, null);
-                    TerminalSession newSession = getCurrentSession();
-                    if (newSession != null && newSession.isRunning()
-                        && newSession.getEmulator() != null) {
-                        newSession.getEmulator().paste(tool.command);
-                        newSession.write("\r");
-                    }
-                } else {
-                    // Normal shell session: write command followed by enter directly.
-                    session.getEmulator().paste(tool.command);
-                    session.write("\r");
-                }
+                runDrawerCommand(tool.command);
                 getDrawer().closeDrawers();
 
                 // Toggle tools: clear the badge, then re-check the state after the
@@ -806,65 +787,131 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     private static final String NOTES_FILE_NAME = "ZDY-note.txt";
-    private final android.os.Handler mNotesSaveHandler =
-        new android.os.Handler(android.os.Looper.getMainLooper());
-    private Runnable mNotesSaveRunnable;
+    /** Note lines (one command per line); the notes area renders these as tap-to-run rows. */
+    private final java.util.List<String> mNotesLines = new java.util.ArrayList<>();
 
-    /** Notes area in the tools drawer: auto-saved memo / command stash in ~/.termux/ZDY-note.txt. */
+    /** Notes area in the tools drawer: command list in ~/.termux/ZDY-note.txt.
+     *  Tap a row to run it, long-press to edit/delete, button to add. */
     private void setupNotesArea() {
-        EditText notesEdit = findViewById(R.id.notes_edit);
         TextView notesToggle = findViewById(R.id.notes_toggle);
-        View notesButtons = findViewById(R.id.notes_buttons);
-        final String path = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.termux/" + NOTES_FILE_NAME;
+        View notesScroll = findViewById(R.id.notes_scroll);
+        View notesAdd = findViewById(R.id.notes_add_button);
 
-        // Load existing note.
-        StringBuilder data = new StringBuilder();
-        if (com.termux.shared.file.FileUtils.readTextFromFile("Notes", path, java.nio.charset.StandardCharsets.UTF_8,
-            data, true) == null) {
-            notesEdit.setText(data.toString());
-        }
-
-        // Debounced auto-save: 500ms after the last edit.
-        notesEdit.addTextChangedListener(new android.text.TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-            }
-
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-            }
-
-            @Override
-            public void afterTextChanged(android.text.Editable s) {
-                if (mNotesSaveRunnable != null) mNotesSaveHandler.removeCallbacks(mNotesSaveRunnable);
-                final String text = s.toString();
-                mNotesSaveRunnable = () -> com.termux.shared.file.FileUtils.writeTextToFile("Notes", path,
-                    java.nio.charset.StandardCharsets.UTF_8, text, false);
-                mNotesSaveHandler.postDelayed(mNotesSaveRunnable, 500);
-            }
-        });
+        loadNotes();
+        renderNotesList();
 
         // Collapse / expand; collapsed by default.
         notesToggle.setOnClickListener(v -> {
-            boolean open = notesEdit.getVisibility() != View.VISIBLE;
-            notesEdit.setVisibility(open ? View.VISIBLE : View.GONE);
-            notesButtons.setVisibility(open ? View.VISIBLE : View.GONE);
+            boolean open = notesScroll.getVisibility() != View.VISIBLE;
+            notesScroll.setVisibility(open ? View.VISIBLE : View.GONE);
+            notesAdd.setVisibility(open ? View.VISIBLE : View.GONE);
             notesToggle.setText(open ? "▾" : "▸");
         });
 
-        // Paste note content into the current session's input line (editable before enter).
-        findViewById(R.id.notes_paste_button).setOnClickListener(v -> {
-            TerminalSession session = getCurrentSession();
-            String text = notesEdit.getText().toString();
-            if (session == null || !session.isRunning()) {
-                Logger.showToast(this, getString(R.string.tools_no_session), false);
-                return;
-            }
-            if (!text.isEmpty()) session.getEmulator().paste(text);
-            getDrawer().closeDrawers();
-        });
+        notesAdd.setOnClickListener(v -> showNoteEditDialog(-1));
+    }
 
-        findViewById(R.id.notes_clear_button).setOnClickListener(v -> notesEdit.setText(""));
+    private String notesFilePath() {
+        return TermuxConstants.TERMUX_HOME_DIR_PATH + "/.termux/" + NOTES_FILE_NAME;
+    }
+
+    private void loadNotes() {
+        mNotesLines.clear();
+        StringBuilder data = new StringBuilder();
+        if (com.termux.shared.file.FileUtils.readTextFromFile("Notes", notesFilePath(),
+            java.nio.charset.StandardCharsets.UTF_8, data, true) == null) {
+            for (String line : data.toString().split("\n")) {
+                if (!line.trim().isEmpty()) mNotesLines.add(line);
+            }
+        }
+    }
+
+    private void saveNotes() {
+        StringBuilder sb = new StringBuilder();
+        for (String line : mNotesLines) sb.append(line).append('\n');
+        com.termux.shared.file.FileUtils.writeTextToFile("Notes", notesFilePath(),
+            java.nio.charset.StandardCharsets.UTF_8, sb.toString(), false);
+    }
+
+    private void renderNotesList() {
+        LinearLayout list = findViewById(R.id.notes_list);
+        list.removeAllViews();
+        float density = getResources().getDisplayMetrics().density;
+        for (int i = 0; i < mNotesLines.size(); i++) {
+            final int index = i;
+            TextView row = new TextView(this);
+            row.setText(mNotesLines.get(i));
+            row.setTextSize(12f);
+            row.setSingleLine(true);
+            row.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            row.setPadding((int) (10 * density), (int) (8 * density),
+                (int) (10 * density), (int) (8 * density));
+            row.setBackgroundResource(android.R.drawable.list_selector_background);
+            row.setOnClickListener(v -> {
+                runDrawerCommand(mNotesLines.get(index));
+                getDrawer().closeDrawers();
+            });
+            row.setOnLongClickListener(v -> {
+                showNoteEditDialog(index);
+                return true;
+            });
+            list.addView(row);
+        }
+    }
+
+    /** Dialog to add (index -1) or edit/delete a note line. */
+    private void showNoteEditDialog(int index) {
+        EditText input = new EditText(this);
+        input.setSingleLine(false);
+        input.setMaxLines(4);
+        input.setText(index < 0 ? "" : mNotesLines.get(index));
+        int pad = (int) (16 * getResources().getDisplayMetrics().density);
+        LinearLayout box = new LinearLayout(this);
+        box.setPadding(pad, pad / 2, pad, 0);
+        box.addView(input, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        new AlertDialog.Builder(this)
+            .setTitle(index < 0 ? R.string.tools_notes_add : R.string.tools_notes_edit_title)
+            .setView(box)
+            .setPositiveButton(R.string.tools_save, (dialog, which) -> {
+                String text = input.getText().toString().trim();
+                if (text.isEmpty()) return;
+                if (index < 0) mNotesLines.add(text);
+                else mNotesLines.set(index, text);
+                saveNotes();
+                renderNotesList();
+            })
+            .setNeutralButton(R.string.tools_delete, (dialog, which) -> {
+                if (index >= 0) {
+                    mNotesLines.remove(index);
+                    saveNotes();
+                    renderNotesList();
+                }
+            })
+            .setNegativeButton(R.string.tools_cancel, null)
+            .show();
+    }
+
+    /** Run a command in the current session, or a fresh one when the current is busy
+     *  in a TUI/fullscreen app (same routing as quick tools). */
+    private void runDrawerCommand(String command) {
+        TerminalSession session = getCurrentSession();
+        boolean sessionBusy = session != null && session.isRunning()
+            && session.getEmulator() != null && session.getEmulator().isAlternateBufferActive();
+
+        if (session == null || sessionBusy) {
+            mTermuxTerminalSessionActivityClient.addNewSession(false, null);
+            TerminalSession newSession = getCurrentSession();
+            if (newSession != null && newSession.isRunning()
+                && newSession.getEmulator() != null) {
+                newSession.getEmulator().paste(command);
+                newSession.write("\r");
+            }
+        } else {
+            session.getEmulator().paste(command);
+            session.write("\r");
+        }
     }
 
     /** Toggle drag-reorder mode for the quick tools grid. */

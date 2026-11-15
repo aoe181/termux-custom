@@ -99,7 +99,7 @@
                 android:layout_width="260dp"
                 android:layout_height="match_parent"
                 android:layout_gravity="end"
-                android:descendantFocusability="blocksDescendants"
+                android:descendantFocusability="afterDescendants"
                 android:orientation="vertical"
                 android:background="?attr/termuxActivityDrawerBackground">
 
@@ -145,7 +145,9 @@
                     android:layout_height="wrap_content"
                     android:text="@string/tools_add_tool" />
 
-                <!-- Notes area: auto-saved memo/command stash, collapsed by default -->
+                <!-- Notes area: collapsible command list, one command per line in ~/.termux/ZDY-note.txt.
+                     Tap a line to run it in the session (same smart routing as tools);
+                     long-press to edit/delete a line. -->
                 <LinearLayout
                     android:id="@+id/notes_section"
                     android:layout_width="match_parent"
@@ -179,41 +181,26 @@
                             android:textSize="14sp" />
                     </LinearLayout>
 
-                    <EditText
-                        android:id="@+id/notes_edit"
+                    <ScrollView
+                        android:id="@+id/notes_scroll"
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:minLines="3"
-                        android:maxLines="6"
-                        android:gravity="top"
-                        android:inputType="textMultiLine"
-                        android:textSize="12sp"
-                        android:hint="@string/tools_notes_hint"
-                        android:visibility="gone" />
-
-                    <LinearLayout
-                        android:id="@+id/notes_buttons"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
+                        android:layout_height="130dp"
                         android:visibility="gone">
 
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/notes_paste_button"
-                            style="?android:attr/buttonBarButtonStyle"
-                            android:layout_width="0dp"
+                        <LinearLayout
+                            android:id="@+id/notes_list"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/tools_notes_paste" />
+                            android:orientation="vertical" />
+                    </ScrollView>
 
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/notes_clear_button"
-                            style="?android:attr/buttonBarButtonStyle"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/tools_notes_clear" />
-                    </LinearLayout>
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/notes_add_button"
+                        style="?android:attr/buttonBarButtonStyle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/tools_notes_add"
+                        android:visibility="gone" />
                 </LinearLayout>
             </LinearLayout>
 
