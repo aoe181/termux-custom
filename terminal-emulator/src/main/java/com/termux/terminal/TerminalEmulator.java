@@ -686,8 +686,21 @@ public final class TerminalEmulator {
      * @param length the number of bytes in the array to process
      */
     public void append(byte[] buffer, int length) {
+        // Per-chunk instead of per-code-point: the GC is throttled to at most once every
+        // 300s anyway, and per-character calls added lock + time-check overhead to the
+        // hottest loop in the app.
+        mScreen.doTerminalBitmapsGC(300000);
         for (int i = 0; i < length; i++)
             processByte(buffer[i]);
+    }
+
+    /** Fast path for dense Unicode blocks that contain no unassigned code points and no
+     *  surrogates, avoiding the expensive Character.getType() lookup for every CJK
+     *  character. Blocks chosen conservatively: only 100%-allocated ones. */
+    private static boolean isKnownAssignedCodePoint(int cp) {
+        return (cp >= 0x4E00 && cp <= 0x9FFF)   // CJK Unified Ideographs
+            || (cp >= 0x3400 && cp <= 0x4DBF)   // CJK Unified Extension A
+            || (cp >= 0xAC00 && cp <= 0xD7A3);  // Hangul Syllables
     }
 
     private void processByte(byte byteToProcess) {
@@ -715,10 +728,12 @@ public final class TerminalEmulator {
                         // "It is not possible to use a C1 control obtained from decoding the
                         // UTF-8 text" - http://invisible-island.net/xterm/ctlseqs/ctlseqs.html
                     } else {
-                        switch (Character.getType(codePoint)) {
-                            case Character.UNASSIGNED:
-                            case Character.SURROGATE:
-                                codePoint = UNICODE_REPLACEMENT_CHAR;
+                        if (!isKnownAssignedCodePoint(codePoint)) {
+                            switch (Character.getType(codePoint)) {
+                                case Character.UNASSIGNED:
+                                case Character.SURROGATE:
+                                    codePoint = UNICODE_REPLACEMENT_CHAR;
+                            }
                         }
                         processCodePoint(codePoint);
                     }
@@ -756,8 +771,6 @@ public final class TerminalEmulator {
     }
 
     public void processCodePoint(int b) {
-        mScreen.doTerminalBitmapsGC(300000);
-
         if (mEscapeState == ESC_OSC && mIsFastPathOsc) {
             mContinueSequence = false;
             receiveOsc(b);

@@ -511,7 +511,42 @@ public final class WcWidth {
     }
 
     /** Return the terminal display width of a code point: 0, 1 || 2. */
+    /** O(1) width lookup for BMP code points (0x0000-0xFFFF), built once from the
+     *  ZERO_WIDTH/WIDE_EASTASIAN range tables. Binary-searching those tables costs ~16
+     *  array-dereferencing iterations per character and shows up heavily when processing
+     *  or rendering CJK text (which needs full table searches, unlike ASCII which exits
+     *  on the first comparison). Supplementary planes keep the original search. */
+    private static final byte[] BMP_WIDTHS = buildBmpWidths();
+
+    private static byte[] buildBmpWidths() {
+        byte[] t = new byte[0x10000];
+        java.util.Arrays.fill(t, (byte) 1);
+        for (int[] r : WIDE_EASTASIAN) {
+            for (int c = Math.max(0, r[0]); c <= Math.min(0xFFFF, r[1]); c++) t[c] = 2;
+        }
+        // Zero width wins over wide, matching the check order of the original width().
+        for (int[] r : ZERO_WIDTH) {
+            for (int c = Math.max(0, r[0]); c <= Math.min(0xFFFF, r[1]); c++) t[c] = 0;
+        }
+        t[0] = 0; // NUL
+        for (int c = 1; c < 32; c++) t[c] = 0;                 // C0 controls
+        for (int c = 0x7F; c < 0xA0; c++) t[c] = 0;            // C1 controls
+        t[0x034F] = 0;
+        for (int c = 0x200B; c <= 0x200F; c++) t[c] = 0;
+        t[0x2028] = 0;
+        t[0x2029] = 0;
+        for (int c = 0x202A; c <= 0x202E; c++) t[c] = 0;
+        for (int c = 0x2060; c <= 0x2063; c++) t[c] = 0;
+        return t;
+    }
+
     public static int width(int ucs) {
+        if (ucs >= 0 && ucs < 0x10000) return BMP_WIDTHS[ucs];
+        return widthNonBmp(ucs);
+    }
+
+    /** Original binary-search implementation, kept for non-BMP code points. */
+    private static int widthNonBmp(int ucs) {
         if (ucs == 0 ||
             ucs == 0x034F ||
             (0x200B <= ucs && ucs <= 0x200F) ||
