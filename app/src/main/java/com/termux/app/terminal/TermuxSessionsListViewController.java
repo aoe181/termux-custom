@@ -98,7 +98,11 @@ public class TermuxSessionsListViewController extends RecyclerView.Adapter<Termu
 
         // Click: switch to session
         holder.itemView.setOnClickListener(v -> {
-            TermuxSession clickedSession = mSessions.get(holder.getAdapterPosition());
+            // getAdapterPosition() returns NO_POSITION (-1) when the item has been
+            // removed or the adapter is being updated; get() would throw.
+            int pos = holder.getAdapterPosition();
+            if (pos == RecyclerView.NO_POSITION || pos >= mSessions.size()) return;
+            TermuxSession clickedSession = mSessions.get(pos);
             if (clickedSession != null) {
                 mActivity.getTermuxTerminalSessionClient().setCurrentSession(clickedSession.getTerminalSession());
                 mActivity.getDrawer().closeDrawers();
@@ -108,7 +112,7 @@ public class TermuxSessionsListViewController extends RecyclerView.Adapter<Termu
         // Long click: rename / close menu
         holder.itemView.setOnLongClickListener(v -> {
             int pos = holder.getAdapterPosition();
-            if (pos == RecyclerView.NO_POSITION) return false;
+            if (pos == RecyclerView.NO_POSITION || pos >= mSessions.size()) return false;
             TermuxSession selectedSession = mSessions.get(pos);
             if (selectedSession == null) return false;
             showSessionMenu(selectedSession.getTerminalSession());
