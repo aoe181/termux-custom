@@ -465,6 +465,13 @@ public class TermuxTerminalSessionActivityClient extends TermuxTerminalSessionCl
         final RecyclerView sessionsRecyclerView = mActivity.findViewById(R.id.terminal_sessions_list);
         if (sessionsRecyclerView == null) return;
 
+        // The row highlight depends on which session is current, so the list must be
+        // rebound when the current session changes. TermuxActivity calls this right after
+        // switching sessions, and notifyDataSetChanged() is the only way to rebind rows
+        // without tracking positions by hand.
+        RecyclerView.Adapter<?> adapter = sessionsRecyclerView.getAdapter();
+        if (adapter != null) adapter.notifyDataSetChanged();
+
         // Delay is necessary otherwise sometimes scroll to newly added session does not happen
         sessionsRecyclerView.postDelayed(() -> sessionsRecyclerView.smoothScrollToPosition(indexOfSession), 1000);
     }

@@ -65,10 +65,17 @@ public class TermuxSessionsListViewController extends RecyclerView.Adapter<Termu
 
         boolean shouldEnableDarkTheme = ThemeUtils.shouldEnableDarkTheme(mActivity, NightMode.getAppNightMode().getName());
 
+        // Current-session highlight. The ListView version used setItemChecked(), which
+        // drives the selector's state_activated; RecyclerView has no such state, so set
+        // it on the row view. Only swap the background resource when the theme differs
+        // from the layout default (session_background_selected), so recycling is safe.
+        holder.itemView.setActivated(sessionAtRow == mActivity.getCurrentSession());
         if (shouldEnableDarkTheme) {
-            holder.title.setBackground(
-                ContextCompat.getDrawable(mActivity, R.drawable.session_background_black_selected)
-            );
+            holder.title.setBackground(ContextCompat.getDrawable(mActivity,
+                R.drawable.session_background_black_selected));
+        } else {
+            holder.title.setBackground(ContextCompat.getDrawable(mActivity,
+                R.drawable.session_background_selected));
         }
 
         String name = sessionAtRow.mSessionName;
