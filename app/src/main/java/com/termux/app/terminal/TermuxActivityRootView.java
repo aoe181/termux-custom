@@ -118,17 +118,6 @@ public class TermuxActivityRootView extends LinearLayout implements ViewTreeObse
 
     @Override
     public void onGlobalLayout() {
-        long _t0 = android.os.SystemClock.elapsedRealtimeNanos();
-        try {
-            onGlobalLayoutInner();
-        } finally {
-            long _dt = android.os.SystemClock.elapsedRealtimeNanos() - _t0;
-            if (_dt > 16000000L)
-                Logger.logError(LOG_TAG, "PERF onGlobalLayout slow: " + (_dt / 1000000L) + "ms");
-        }
-    }
-
-    private void onGlobalLayoutInner() {
         if (mActivity == null || !mActivity.isVisible()) return;
 
         // Re-apply drawer edge-swipe zones; DrawerLayout resets them on every layout pass.
