@@ -686,17 +686,15 @@ public final class TerminalEmulator {
      * @param length the number of bytes in the array to process
      */
     public void append(byte[] buffer, int length) {
-        // Per-chunk instead of per-code-point: the GC is throttled to at most once every
-        // 300s anyway, and per-character calls added lock + time-check overhead to the
-        // hottest loop in the app.
+        // Per-chunk instead of per-code-point (the GC is throttled to once per 300s
+        // anyway); per-character calls taxed the hottest loop in the app.
         mScreen.doTerminalBitmapsGC(300000);
         for (int i = 0; i < length; i++)
             processByte(buffer[i]);
     }
 
-    /** Fast path for dense Unicode blocks that contain no unassigned code points and no
-     *  surrogates, avoiding the expensive Character.getType() lookup for every CJK
-     *  character. Blocks chosen conservatively: only 100%-allocated ones. */
+    /** Fast path for 100%-allocated Unicode blocks (no unassigned code points or
+     *  surrogates), avoiding Character.getType() per CJK character. */
     private static boolean isKnownAssignedCodePoint(int cp) {
         return (cp >= 0x4E00 && cp <= 0x9FFF)   // CJK Unified Ideographs
             || (cp >= 0x3400 && cp <= 0x4DBF)   // CJK Unified Extension A

@@ -511,11 +511,8 @@ public final class WcWidth {
     }
 
     /** Return the terminal display width of a code point: 0, 1 || 2. */
-    /** O(1) width lookup for BMP code points (0x0000-0xFFFF), built once from the
-     *  ZERO_WIDTH/WIDE_EASTASIAN range tables. Binary-searching those tables costs ~16
-     *  array-dereferencing iterations per character and shows up heavily when processing
-     *  or rendering CJK text (which needs full table searches, unlike ASCII which exits
-     *  on the first comparison). Supplementary planes keep the original search. */
+    /** O(1) width lookup for BMP code points; binary-searching the range tables per
+     *  character showed up heavily on CJK processing/rendering. Non-BMP keeps the search. */
     private static final byte[] BMP_WIDTHS = buildBmpWidths();
 
     private static byte[] buildBmpWidths() {

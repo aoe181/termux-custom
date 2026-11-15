@@ -650,8 +650,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 // In reorder mode taps are suppressed.
                 if (mToolsReorderMode) return;
 
-                // Interactive mirror picker tool: show selection dialog instead of
-                // writing a command directly.
+                // Mirror picker tool opens its dialog instead of running a command.
                 if (ToolItem.MIRROR_SWITCH_COMMAND.equals(tool.command)) {
                     getDrawer().closeDrawers();
                     showMirrorSwitchDialog();
@@ -661,13 +660,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 runDrawerCommand(tool.command);
                 getDrawer().closeDrawers();
 
-                // Toggle tools: clear the badge, then re-check the state after the
-                // toggle command has had time to run.
+                // Clear the badge, then re-check once the toggle has run; the late
+                // re-check catches slow starts (e.g. yingshi waits up to 10s).
                 if (tool.isToggle()) {
                     tool.state = null;
                     mToolsAdapter.notifyDataSetChanged();
-                    new android.os.Handler(android.os.Looper.getMainLooper())
-                        .postDelayed(() -> refreshToggleState(tool), 800);
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> refreshToggleState(tool), 800);
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> refreshToggleState(tool), 3000);
                 }
             }
 
@@ -712,7 +711,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             @Override
             public void onSelectedChanged(@Nullable RecyclerView.ViewHolder viewHolder, int actionState) {
                 super.onSelectedChanged(viewHolder, actionState);
-                // A2: visual lift feedback while dragging.
+                // Lift feedback while dragging.
                 if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && viewHolder != null) {
                     viewHolder.itemView.setTranslationZ(16f);
                     viewHolder.itemView.setScaleX(1.08f);
@@ -768,14 +767,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         try {
             ProcessBuilder pb = new ProcessBuilder(
                 TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/bin/bash", "-c", cmd)
-                // Discard output: leaving it in the pipe could block a noisy check
-                // command once the 64KB pipe buffer fills. (Redirect.DISCARD is
-                // Java 9+ and absent from android.jar; /dev/null is equivalent here.)
+                // Discard output so a noisy check can't block on the 64KB pipe.
                 .redirectOutput(new java.io.File("/dev/null"))
                 .redirectError(new java.io.File("/dev/null"));
-            // The app process' environment differs from a terminal session: it lacks
-            // the Termux bin dir in PATH (curl/pidof/jq wouldn't resolve) and HOME
-            // (tilde in check commands would expand wrongly). Set both explicitly.
+            // Checks run outside a session: app env lacks the Termux bin dir in
+            // PATH and HOME, so set both.
             String path = pb.environment().get("PATH");
             pb.environment().put("PATH", TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/bin"
                 + (path != null && !path.isEmpty() ? ":" + path : ""));
@@ -800,7 +796,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         boolean sessionBusy = session != null && session.isRunning()
             && session.getEmulator() != null && session.getEmulator().isAlternateBufferActive();
 
-        if (session == null || sessionBusy) {
+        // A dead session ("press Enter to close") would silently swallow the command,
+        // so it needs a fresh session just like a busy TUI one.
+        if (session == null || !session.isRunning() || sessionBusy) {
             mTermuxTerminalSessionActivityClient.addNewSession(false, null);
             TerminalSession newSession = getCurrentSession();
             if (newSession != null && newSession.isRunning()
@@ -835,7 +833,6 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         }
     }
 
-    /** Show a dialog to add (null tool) or edit/delete an existing tool. */
     /** Show a dialog to pick an apt mirror, then switch sources.list and refresh the index. */
     private void showMirrorSwitchDialog() {
         // URLs verified reachable (200) on device 2026-11: aliyun has NO /apt/ segment.
@@ -848,10 +845,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         String[] names = new String[mirrors.length];
         for (int i = 0; i < mirrors.length; i++) names[i] = mirrors[i][0];
 
-        // Read the current mirror host from sources.list. Match by host only: the path
-        // differs between mirrors (/termux/apt/termux-main vs /termux/termux-main), so
-        // full-URL comparison never detected the current mirror before. Anchored on the
-        // "deb" keyword so URLs in comments don't confuse detection.
+        // Match by host only (mirror paths differ), anchored on "deb" so comment
+        // URLs don't confuse detection.
         String currentHost = null;
         try {
             java.io.File f = new java.io.File(
