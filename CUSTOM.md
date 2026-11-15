@@ -61,9 +61,19 @@
 ### 构建/工程
 | 改动 | 说明 |
 |---|---|
-| 云构建流水线 | release+debug 双包、Gradle cache、pre-release 自动清理 |
+| 云构建流水线 | release+debug 双包、Gradle cache、pre-release 自动保留最近 8 个 |
 | bootstrap 下载前置 | ndk-build 的 `.incbin` 需要 zip 先就位（上游任务顺序 bug） |
 | bootstrap 版本 | 对齐上游 `2026.02.12-r1` + `%2B`/`apt.android-7` 编码 |
+
+### 工具抽屉强化（2026-11-15）
+| 改动 | 说明 |
+|---|---|
+| 状态开关工具 | `checkCommand`（退出码 0=开）+ 三色状态角标；检查进程注入 PATH/HOME/PREFIX |
+| 镜像对话框修复 | 按主机名检测当前源（🟢 标记）、修正阿里云 404 路径、切换 sed 兼容路径变体、锚定 `deb` 防注释干扰 |
+| 容错加固 | ZDY.json 单条损坏只跳过该条（不整体重置）；整文件损坏保留现场不覆盖 |
+| 执行路由 | `runDrawerCommand()` 统一 TUI 智能路由；死会话（已结束）自动开新会话 |
+| 拖拽修复 | 非相邻拖动乱序（swap → 逐步交换） |
+| 关闭会话 | 非当前会话关闭不再跳转视图；通知栏会话计数即时刷新 |
 
 ## 测试方法
 
@@ -71,6 +81,27 @@
 - **噪声认知**：跨轮 ±10%（温度/后台），同轮 <3%。验收跑两轮，提升必须超噪声
 - 性能改动纪律：先测量定位 → 最小改动 → 等价性验证 → 双轮实测，无效即撤
 - debug 包才能 logcat 调试；release 包 `/proc` 受 hidepid 限制、进程不可见
+
+## 上游同步指南
+
+本地已挂好 remote：`upstream` = termux/termux-app。
+
+**改动结构与冲突面**：新增 8 文件（零冲突）+ 修改 21 文件，真正的冲突热点约 8 个：
+`TermuxActivity.java`、`activity_termux.xml`、`TerminalEmulator.java`、`TerminalRenderer.java`、
+`WcWidth.java`、`strings.xml`、`app/build.gradle`、`AndroidManifest.xml`。
+
+- **小提交**：不碰上述文件的直接 `git cherry-pick` 或 merge（零冲突）；碰了的冲突也只限该提交的改动块。
+  注意 cherry-pick 后历史分叉，之后全量 merge 会再冲突一次——紧急修复才用，用完尽快 merge 归拢。
+- **大版本**：预估冲突 3-8 个文件、每个几行到几十行，半天量级。只有上游大重构（重写核心类）才会"改特别多"。
+- **降痛铁律**：每月小步 merge、别攒大——冲突量和分叉时长成正比。
+
+**标准流程**：
+```sh
+git fetch upstream
+git log --oneline HEAD..upstream/master -- app/src/main/java/com/termux/app/TermuxActivity.java  # 侦察重叠
+git merge upstream/master        # 解冲突对照下方改动清单（每处"为什么改"都有记录）
+# 回归: 工具抽屉/开关角标/会话管理/镜像 + bash ~/perf_test.sh <标签>
+```
 
 ## 已知注意事项
 
