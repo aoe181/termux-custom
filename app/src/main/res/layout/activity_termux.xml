@@ -127,7 +127,7 @@
                         android:src="@drawable/ic_reorder"
                         android:background="@null"
                         android:alpha="0.6"
-                        android:contentDescription="@string/tools_reorder_mode"
+                        android:contentDescription="@string/tools_manage_mode"
                         app:tint="?attr/termuxActivityDrawerImageTint" />
                 </LinearLayout>
 

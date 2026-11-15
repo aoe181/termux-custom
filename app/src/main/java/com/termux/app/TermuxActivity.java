@@ -122,11 +122,17 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     /** Adapter backing the quick tools drawer grid. */
     ToolsAdapter mToolsAdapter;
 
-    /** Whether the quick tools grid is in drag-reorder mode. */
-    boolean mToolsReorderMode = false;
+    /** Whether the quick tools grid is in manage mode (tap = edit, long-press = drag). */
+    boolean mToolsManageMode = false;
 
     /** ItemTouchHelper driving quick tools drag-reorder. */
     ItemTouchHelper mItemTouchHelper;
+
+    /** Toggle checks currently in flight, mapped to the refresh round that started them. */
+    private final java.util.Map<String, Long> mToggleChecksInFlight = new java.util.HashMap<>();
+
+    /** Bumped whenever a fresh check round starts; stale results from older rounds are dropped. */
+    private long mToggleCheckGeneration = 0;
 
     /** Predictive back callback (Android 13+). */
     private androidx.activity.OnBackPressedCallback mBackCallback;
@@ -647,8 +653,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         ToolsAdapter adapter = new ToolsAdapter(tools, new ToolsAdapter.OnToolClickListener() {
             @Override
             public void onToolClick(ToolItem tool) {
-                // In reorder mode taps are suppressed.
-                if (mToolsReorderMode) return;
+                // In manage mode a tap edits the tool instead of running it.
+                if (mToolsManageMode) {
+                    showToolEditDialog(tool);
+                    return;
+                }
 
                 // Mirror picker tool opens its dialog instead of running a command.
                 if (ToolItem.MIRROR_SWITCH_COMMAND.equals(tool.command)) {
@@ -665,16 +674,17 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 if (tool.isToggle()) {
                     tool.state = null;
                     mToolsAdapter.notifyDataSetChanged();
-                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> refreshToggleState(tool), 800);
+                    // Forced recheck invalidates any result still in flight from before the
+                    // toggle ran, so a stale pre-toggle state cannot land after the reset.
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> refreshToggleStateForced(tool), 800);
                     new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> refreshToggleState(tool), 3000);
                 }
             }
 
             @Override
             public void onToolLongClick(ToolItem tool) {
-                // In reorder mode long-press is reserved for dragging.
-                if (mToolsReorderMode) return;
-                showToolEditDialog(tool);
+                // Long-press is reserved for dragging inside manage mode; in normal
+                // mode it does nothing (editing lives behind the manage button).
             }
         }, () -> ToolStore.save(this, mToolsAdapter.getTools()));
         toolsRecyclerView.setAdapter(adapter);
@@ -703,9 +713,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
             @Override
             public boolean isLongPressDragEnabled() {
-                // Only enabled while reorder mode is on; long-press is the edit
-                // gesture in normal mode.
-                return mToolsReorderMode;
+                // Drag only inside manage mode; normal-mode taps keep running tools.
+                return mToolsManageMode;
             }
 
             @Override
@@ -735,7 +744,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         });
         mItemTouchHelper.attachToRecyclerView(toolsRecyclerView);
 
-        findViewById(R.id.tools_reorder_button).setOnClickListener(v -> toggleToolsReorderMode());
+        findViewById(R.id.tools_reorder_button).setOnClickListener(v -> toggleToolsManageMode());
         findViewById(R.id.add_tool_button).setOnClickListener(v -> showToolEditDialog(null));
 
         // Reload tools when the right drawer opens: the list is otherwise only loaded
@@ -745,13 +754,40 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             @Override
             public void onDrawerOpened(View drawerView) {
                 if (drawerView.getId() != R.id.right_drawer) return;
-                if (mToolsReorderMode || mToolsAdapter == null) return;
+                if (mToolsManageMode || mToolsAdapter == null) return;
                 List<ToolItem> fresh = ToolStore.load(TermuxActivity.this);
                 List<ToolItem> current = mToolsAdapter.getTools();
+
+                // Carry known badge states over by (id, checkCommand) so reloading the
+                // list does not blank every badge until the checks finish.
+                java.util.Map<String, Integer> previousStates = new java.util.HashMap<>();
+                java.util.Map<String, String> previousChecks = new java.util.HashMap<>();
+                for (ToolItem t : current) {
+                    if (t.isToggle() && t.state != null) {
+                        previousStates.put(t.id, t.state);
+                        previousChecks.put(t.id, t.checkCommand);
+                    }
+                }
+
                 current.clear();
                 current.addAll(fresh);
+                for (ToolItem t : current) {
+                    if (!t.isToggle()) continue;
+                    // Reuse the old state only if the check command itself is unchanged,
+                    // otherwise the badge would describe a different command.
+                    if (t.checkCommand.equals(previousChecks.get(t.id)))
+                        t.state = previousStates.get(t.id);
+                }
                 mToolsAdapter.notifyDataSetChanged();
                 refreshAllToggleStates();
+            }
+
+            @Override
+            public void onDrawerClosed(View drawerView) {
+                if (drawerView.getId() != R.id.right_drawer) return;
+                // Leaving manage mode on close: a stale mode would turn the next tap
+                // into an unexpected edit dialog.
+                if (mToolsManageMode) toggleToolsManageMode();
             }
         });
 
@@ -761,10 +797,46 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     /** Re-check one toggle tool's state (runs checkCommand off the UI thread). */
     private void refreshToggleState(ToolItem tool) {
+        refreshToggleState(tool, false);
+    }
+
+    /** Re-check after the user actually toggled something: always start a new round so
+     *  the pre-toggle state cannot be shown as the result. */
+    private void refreshToggleStateForced(ToolItem tool) {
+        synchronized (mToggleChecksInFlight) {
+            mToggleCheckGeneration++;
+        }
+        refreshToggleState(tool, true);
+    }
+
+    /** @param force start even if a check for this tool is already running */
+    private void refreshToggleState(ToolItem tool, boolean force) {
         if (!tool.isToggle()) return;
+        // A check for this tool started in this same round is still running; its
+        // result is fresh enough, so don't stack another process on quick reopen.
+        final long generation;
+        synchronized (mToggleChecksInFlight) {
+            if (!force) {
+                Long running = mToggleChecksInFlight.get(tool.id);
+                if (running != null && running == mToggleCheckGeneration) return;
+            }
+            generation = mToggleCheckGeneration;
+            mToggleChecksInFlight.put(tool.id, generation);
+        }
+        final String checkCommand = tool.checkCommand;
         new Thread(() -> {
-            Integer state = runToggleCheck(tool.checkCommand);
+            Integer state = runToggleCheck(checkCommand);
+            boolean currentRound;
+            synchronized (mToggleChecksInFlight) {
+                // Only clear the slot if this round still owns it.
+                if (Long.valueOf(generation).equals(mToggleChecksInFlight.get(tool.id)))
+                    mToggleChecksInFlight.remove(tool.id);
+                currentRound = generation == mToggleCheckGeneration;
+            }
+            if (!currentRound) return; // superseded; the newer round already re-checks
             runOnUiThread(() -> {
+                // The command may have been edited while the check was running.
+                if (!checkCommand.equals(tool.checkCommand)) return;
                 tool.state = state;
                 if (mToolsAdapter != null) mToolsAdapter.notifyDataSetChanged();
             });
@@ -774,6 +846,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     /** Re-check all toggle tools. */
     private void refreshAllToggleStates() {
         if (mToolsAdapter == null) return;
+        synchronized (mToggleChecksInFlight) {
+            mToggleCheckGeneration++;
+        }
         for (ToolItem t : mToolsAdapter.getTools()) {
             if (t.isToggle()) refreshToggleState(t);
         }
@@ -829,22 +904,24 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         }
     }
 
-    /** Toggle drag-reorder mode for the quick tools grid. */
-    private void toggleToolsReorderMode() {
-        mToolsReorderMode = !mToolsReorderMode;
+    /** Toggle manage mode for the quick tools grid (tap = edit, long-press = drag). */
+    private void toggleToolsManageMode() {
+        mToolsManageMode = !mToolsManageMode;
 
         TextView title = findViewById(R.id.tools_drawer_title);
-        ImageButton reorderButton = findViewById(R.id.tools_reorder_button);
-        if (mToolsReorderMode) {
-            title.setText(R.string.tools_reorder_mode_hint);
-            reorderButton.setAlpha(1f);
-            reorderButton.setColorFilter(
+        ImageButton manageButton = findViewById(R.id.tools_reorder_button);
+        if (mToolsManageMode) {
+            title.setText(R.string.tools_manage_mode_hint);
+            manageButton.setImageResource(R.drawable.ic_done);
+            manageButton.setAlpha(1f);
+            manageButton.setColorFilter(
                 ContextCompat.getColor(this, android.R.color.holo_blue_light));
-            Logger.showToast(this, getString(R.string.tools_reorder_mode_hint), false);
+            Logger.showToast(this, getString(R.string.tools_manage_mode_hint), false);
         } else {
             title.setText(R.string.tools_drawer_title);
-            reorderButton.setAlpha(0.6f);
-            reorderButton.clearColorFilter();
+            manageButton.setImageResource(R.drawable.ic_reorder);
+            manageButton.setAlpha(0.6f);
+            manageButton.clearColorFilter();
             // Persist the (possibly new) order on exit.
             ToolStore.save(this, mToolsAdapter.getTools());
         }
@@ -963,6 +1040,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             .setNeutralButton(R.string.tools_delete, (dialog, which) -> {
                 if (!isNew) {
                     mToolsAdapter.removeTool(tool);
+                    // Drop any in-flight check slot for the removed tool.
+                    synchronized (mToggleChecksInFlight) {
+                        mToggleChecksInFlight.remove(tool.id);
+                    }
                     ToolStore.save(this, mToolsAdapter.getTools());
                 }
             })

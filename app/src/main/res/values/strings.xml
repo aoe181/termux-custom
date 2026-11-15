@@ -72,8 +72,8 @@
     <string name="action_close_session">Close session (free)</string>
     <string name="tools_close_no_confirm">Close and don\'t ask again</string>
     <string name="tools_mirror_switch_title">Switch mirror</string>
-    <string name="tools_reorder_mode">Reorder tools</string>
-    <string name="tools_reorder_mode_hint">Reordering — drag icons to rearrange, tap the button again to exit</string>
+    <string name="tools_manage_mode">Manage tools</string>
+    <string name="tools_manage_mode_hint">Managing — tap an icon to edit, long-press to drag, tap ✓ to finish</string>
     <string name="tools_check_command_label">Toggle tool: state check command (exit code 0 = on); leave empty for a normal tool</string>
 
     <string name="title_rename_session">Set session name</string>
