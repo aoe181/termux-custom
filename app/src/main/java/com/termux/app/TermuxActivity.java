@@ -769,14 +769,18 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             ProcessBuilder pb = new ProcessBuilder(
                 TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/bin/bash", "-c", cmd)
                 // Discard output: leaving it in the pipe could block a noisy check
-                // command once the 64KB pipe buffer fills.
-                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                .redirectError(ProcessBuilder.Redirect.DISCARD);
-            // The app process' PATH doesn't include the Termux bin dir (this runs
-            // outside a session), so commands like curl/pidof/jq wouldn't resolve.
+                // command once the 64KB pipe buffer fills. (Redirect.DISCARD is
+                // Java 9+ and absent from android.jar; /dev/null is equivalent here.)
+                .redirectOutput(new java.io.File("/dev/null"))
+                .redirectError(new java.io.File("/dev/null"));
+            // The app process' environment differs from a terminal session: it lacks
+            // the Termux bin dir in PATH (curl/pidof/jq wouldn't resolve) and HOME
+            // (tilde in check commands would expand wrongly). Set both explicitly.
             String path = pb.environment().get("PATH");
             pb.environment().put("PATH", TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/bin"
                 + (path != null && !path.isEmpty() ? ":" + path : ""));
+            pb.environment().put("HOME", TermuxConstants.TERMUX_HOME_DIR_PATH);
+            pb.environment().put("PREFIX", TermuxConstants.TERMUX_PREFIX_DIR_PATH);
             Process p = pb.start();
             if (!p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) {
                 p.destroy();
@@ -846,7 +850,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         // Read the current mirror host from sources.list. Match by host only: the path
         // differs between mirrors (/termux/apt/termux-main vs /termux/termux-main), so
-        // full-URL comparison never detected the current mirror before.
+        // full-URL comparison never detected the current mirror before. Anchored on the
+        // "deb" keyword so URLs in comments don't confuse detection.
         String currentHost = null;
         try {
             java.io.File f = new java.io.File(
@@ -855,7 +860,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 String content = new String(java.nio.file.Files.readAllBytes(f.toPath()),
                     java.nio.charset.StandardCharsets.UTF_8);
                 java.util.regex.Matcher m = java.util.regex.Pattern
-                    .compile("https://([^/ ]+)").matcher(content);
+                    .compile("deb\\s+https?://([^/ ]+)").matcher(content);
                 if (m.find()) currentHost = m.group(1);
             }
         } catch (Exception ignored) {

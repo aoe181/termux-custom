@@ -23,17 +23,21 @@ public class ToolStore {
         return TermuxConstants.TERMUX_HOME_DIR_PATH + "/.termux/" + FILE_NAME;
     }
 
-    /** Load tools from disk. First run returns defaults and persists them. */
+    /** Load tools from disk. First run returns defaults and persists them.
+     *  A broken existing file is kept (not overwritten) so it can be recovered manually. */
     public static List<ToolItem> load(Context context) {
         String path = getFilePath();
         List<ToolItem> tools = null;
         StringBuilder data = new StringBuilder();
+        boolean fileExists = new java.io.File(path).exists();
         if (FileUtils.readTextFromFile(LOG_TAG, path, StandardCharsets.UTF_8, data, true) == null) {
             tools = ToolItem.listFromJson(data.toString());
         }
         if (tools == null) {
             tools = ToolItem.defaults();
-            save(context, tools);
+            // Only persist defaults when there is no file at all; a corrupt file is
+            // left in place for manual recovery instead of being destroyed.
+            if (!fileExists) save(context, tools);
         }
         return tools;
     }
