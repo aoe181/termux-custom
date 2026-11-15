@@ -74,6 +74,11 @@
     <string name="tools_mirror_switch_title">Switch mirror</string>
     <string name="tools_reorder_mode">Reorder tools</string>
     <string name="tools_reorder_mode_hint">Reordering — drag icons to rearrange, tap the button again to exit</string>
+    <string name="tools_check_command_label">Toggle tool: state check command (exit code 0 = on); leave empty for a normal tool</string>
+    <string name="tools_notes_title">Notes</string>
+    <string name="tools_notes_hint">Memo and command stash (auto-saved)</string>
+    <string name="tools_notes_paste">Paste</string>
+    <string name="tools_notes_clear">Clear</string>
 
     <string name="title_rename_session">Set session name</string>
     <string name="action_rename_session">Rename</string>

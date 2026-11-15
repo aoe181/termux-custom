@@ -289,6 +289,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setToggleKeyboardView();
 
         setQuickToolsDrawerView();
+        setupNotesArea();
 
         setDrawerEdgeTouchRestriction();
 
@@ -679,6 +680,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     session.write("\r");
                 }
                 getDrawer().closeDrawers();
+
+                // Toggle tools: clear the badge, then re-check the state after the
+                // toggle command has had time to run.
+                if (tool.isToggle()) {
+                    tool.state = null;
+                    mToolsAdapter.notifyDataSetChanged();
+                    new android.os.Handler(android.os.Looper.getMainLooper())
+                        .postDelayed(() -> refreshToggleState(tool), 800);
+                }
             }
 
             @Override
@@ -748,6 +758,107 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         findViewById(R.id.tools_reorder_button).setOnClickListener(v -> toggleToolsReorderMode());
         findViewById(R.id.add_tool_button).setOnClickListener(v -> showToolEditDialog(null));
+
+        // Initial state check for toggle tools.
+        refreshAllToggleStates();
+    }
+
+    /** Re-check one toggle tool's state (runs checkCommand off the UI thread). */
+    private void refreshToggleState(ToolItem tool) {
+        if (!tool.isToggle()) return;
+        new Thread(() -> {
+            Integer state = runToggleCheck(tool.checkCommand);
+            runOnUiThread(() -> {
+                tool.state = state;
+                if (mToolsAdapter != null) mToolsAdapter.notifyDataSetChanged();
+            });
+        }).start();
+    }
+
+    /** Re-check all toggle tools. */
+    private void refreshAllToggleStates() {
+        if (mToolsAdapter == null) return;
+        for (ToolItem t : mToolsAdapter.getTools()) {
+            if (t.isToggle()) refreshToggleState(t);
+        }
+    }
+
+    /** Run a toggle tool's check command outside the terminal; exit code 0 = on. */
+    private Integer runToggleCheck(String cmd) {
+        try {
+            Process p = new ProcessBuilder(
+                TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/bin/bash", "-c", cmd)
+                .redirectErrorStream(true).start();
+            if (!p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) {
+                p.destroy();
+                return null;
+            }
+            return p.exitValue() == 0 ? 1 : 0;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static final String NOTES_FILE_NAME = "ZDY-note.txt";
+    private final android.os.Handler mNotesSaveHandler =
+        new android.os.Handler(android.os.Looper.getMainLooper());
+    private Runnable mNotesSaveRunnable;
+
+    /** Notes area in the tools drawer: auto-saved memo / command stash in ~/.termux/ZDY-note.txt. */
+    private void setupNotesArea() {
+        EditText notesEdit = findViewById(R.id.notes_edit);
+        TextView notesToggle = findViewById(R.id.notes_toggle);
+        View notesButtons = findViewById(R.id.notes_buttons);
+        final String path = TermuxConstants.TERMUX_HOME_DIR_PATH + "/.termux/" + NOTES_FILE_NAME;
+
+        // Load existing note.
+        StringBuilder data = new StringBuilder();
+        if (com.termux.shared.file.FileUtils.readTextFromFile("Notes", path, java.nio.charset.StandardCharsets.UTF_8,
+            data, true) == null) {
+            notesEdit.setText(data.toString());
+        }
+
+        // Debounced auto-save: 500ms after the last edit.
+        notesEdit.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {
+                if (mNotesSaveRunnable != null) mNotesSaveHandler.removeCallbacks(mNotesSaveRunnable);
+                final String text = s.toString();
+                mNotesSaveRunnable = () -> com.termux.shared.file.FileUtils.writeTextToFile("Notes", path,
+                    java.nio.charset.StandardCharsets.UTF_8, text, false);
+                mNotesSaveHandler.postDelayed(mNotesSaveRunnable, 500);
+            }
+        });
+
+        // Collapse / expand; collapsed by default.
+        notesToggle.setOnClickListener(v -> {
+            boolean open = notesEdit.getVisibility() != View.VISIBLE;
+            notesEdit.setVisibility(open ? View.VISIBLE : View.GONE);
+            notesButtons.setVisibility(open ? View.VISIBLE : View.GONE);
+            notesToggle.setText(open ? "▾" : "▸");
+        });
+
+        // Paste note content into the current session's input line (editable before enter).
+        findViewById(R.id.notes_paste_button).setOnClickListener(v -> {
+            TerminalSession session = getCurrentSession();
+            String text = notesEdit.getText().toString();
+            if (session == null || !session.isRunning()) {
+                Logger.showToast(this, getString(R.string.tools_no_session), false);
+                return;
+            }
+            if (!text.isEmpty()) session.getEmulator().paste(text);
+            getDrawer().closeDrawers();
+        });
+
+        findViewById(R.id.notes_clear_button).setOnClickListener(v -> notesEdit.setText(""));
     }
 
     /** Toggle drag-reorder mode for the quick tools grid. */
@@ -774,18 +885,20 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     /** Show a dialog to add (null tool) or edit/delete an existing tool. */
     /** Show a dialog to pick an apt mirror, then switch sources.list and refresh the index. */
     private void showMirrorSwitchDialog() {
-        // Official -> Tsinghua -> USTC -> Aliyun (per user preference: keep official + tsinghua primary)
+        // URLs verified reachable (200) on device 2026-11: aliyun has NO /apt/ segment.
         final String[][] mirrors = {
             {"官方源 (termux.dev)", "https://packages.termux.dev/apt/termux-main"},
             {"清华源 (tuna)", "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"},
             {"中科大源 (ustc)", "https://mirrors.ustc.edu.cn/termux/apt/termux-main"},
-            {"阿里云源 (aliyun)", "https://mirrors.aliyun.com/termux/apt/termux-main"},
+            {"阿里云源 (aliyun)", "https://mirrors.aliyun.com/termux/termux-main"},
         };
         String[] names = new String[mirrors.length];
         for (int i = 0; i < mirrors.length; i++) names[i] = mirrors[i][0];
 
-        // Read the current mirror to mark it in the dialog
-        String current = null;
+        // Read the current mirror host from sources.list. Match by host only: the path
+        // differs between mirrors (/termux/apt/termux-main vs /termux/termux-main), so
+        // full-URL comparison never detected the current mirror before.
+        String currentHost = null;
         try {
             java.io.File f = new java.io.File(
                 TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/etc/apt/sources.list");
@@ -793,15 +906,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 String content = new String(java.nio.file.Files.readAllBytes(f.toPath()),
                     java.nio.charset.StandardCharsets.UTF_8);
                 java.util.regex.Matcher m = java.util.regex.Pattern
-                    .compile("https://[^/ ]+/termux/apt/termux-main").matcher(content);
-                if (m.find()) current = m.group();
+                    .compile("https://([^/ ]+)").matcher(content);
+                if (m.find()) currentHost = m.group(1);
             }
         } catch (Exception ignored) {
         }
 
         for (int i = 0; i < names.length; i++) {
-            if (current != null && current.equals(mirrors[i][1])) {
-                names[i] = "✓ " + names[i] + " (当前)";
+            if (currentHost != null && mirrors[i][1].contains("://" + currentHost + "/")) {
+                names[i] = names[i] + "  🟢";
             }
         }
 
@@ -814,7 +927,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     Logger.showToast(this, getString(R.string.tools_no_session), false);
                     return;
                 }
-                String cmd = "sed -i 's|https://[^/]*/termux/apt/termux-main|" + url + "|g' $PREFIX/etc/apt/sources.list && echo \"已切换到: " + url + "\" && pkg update";
+                // Replace any termux-main URL regardless of path variant.
+                String cmd = "sed -i 's|https://[^ ]*termux-main|" + url + "|g' $PREFIX/etc/apt/sources.list && echo \"已切换到: " + url + "\" && pkg update";
                 session.getEmulator().paste(cmd);
                 session.write("\r");
             })
@@ -846,6 +960,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         commandInput.setMaxLines(4);
         container.addView(commandInput);
 
+        EditText checkInput = new EditText(this);
+        checkInput.setHint(R.string.tools_check_command_label);
+        checkInput.setText(isNew || tool.checkCommand == null ? "" : tool.checkCommand);
+        checkInput.setSingleLine(false);
+        checkInput.setMaxLines(2);
+        container.addView(checkInput);
+
         new AlertDialog.Builder(this)
             .setTitle(isNew ? R.string.tools_new_title : R.string.tools_edit_title)
             .setView(container)
@@ -853,19 +974,25 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 String name = nameInput.getText().toString().trim();
                 String icon = iconInput.getText().toString().trim();
                 String command = commandInput.getText().toString();
+                String check = checkInput.getText().toString().trim();
                 if (name.isEmpty() || command.isEmpty()) {
                     Logger.showToast(this, getString(R.string.tools_empty_error), false);
                     return;
                 }
                 if (isNew) {
-                    mToolsAdapter.addTool(new ToolItem(name, icon, command));
+                    ToolItem t = new ToolItem(name, icon, command);
+                    t.checkCommand = check;
+                    mToolsAdapter.addTool(t);
                 } else {
                     tool.name = name;
                     tool.icon = icon;
                     tool.command = command;
+                    tool.checkCommand = check;
+                    tool.state = null;
                     mToolsAdapter.notifyDataSetChanged();
                 }
                 ToolStore.save(this, mToolsAdapter.getTools());
+                refreshAllToggleStates();
             })
             .setNeutralButton(R.string.tools_delete, (dialog, which) -> {
                 if (!isNew) {

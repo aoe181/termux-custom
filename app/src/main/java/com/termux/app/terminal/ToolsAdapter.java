@@ -71,6 +71,13 @@ public class ToolsAdapter extends RecyclerView.Adapter<ToolsAdapter.ViewHolder> 
         ToolItem tool = mTools.get(position);
         holder.icon.setText(tool.icon != null && !tool.icon.isEmpty() ? tool.icon : "▶");
         holder.name.setText(tool.name);
+        if (tool.isToggle()) {
+            holder.stateDot.setVisibility(View.VISIBLE);
+            holder.stateDot.setTextColor(tool.state == null ? 0xFF9E9E9E
+                : tool.state == 1 ? 0xFF4CAF50 : 0xFFF44336);
+        } else {
+            holder.stateDot.setVisibility(View.GONE);
+        }
         holder.itemView.setOnClickListener(v -> mListener.onToolClick(tool));
         holder.itemView.setOnLongClickListener(v -> {
             mListener.onToolLongClick(tool);
@@ -103,11 +110,13 @@ public class ToolsAdapter extends RecyclerView.Adapter<ToolsAdapter.ViewHolder> 
     static class ViewHolder extends RecyclerView.ViewHolder {
         final TextView icon;
         final TextView name;
+        final TextView stateDot;
 
         ViewHolder(View itemView) {
             super(itemView);
             icon = itemView.findViewById(R.id.tool_icon);
             name = itemView.findViewById(R.id.tool_name);
+            stateDot = itemView.findViewById(R.id.tool_state_dot);
         }
     }
 }

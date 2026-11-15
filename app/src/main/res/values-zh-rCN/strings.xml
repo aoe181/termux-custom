@@ -56,6 +56,11 @@
     <string name="tools_mirror_switch_title">切换软件源</string>
     <string name="tools_reorder_mode">拖动排序</string>
     <string name="tools_reorder_mode_hint">拖动排序中 — 拖动图标调整顺序，再次点击↕按钮退出</string>
+    <string name="tools_check_command_label">开关工具: 状态检查命令（退出码 0=开）；留空为普通工具</string>
+    <string name="tools_notes_title">便签</string>
+    <string name="tools_notes_hint">备忘与命令收藏（自动保存）</string>
+    <string name="tools_notes_paste">贴入</string>
+    <string name="tools_notes_clear">清空</string>
 
     <string name="title_rename_session">设置会话名称</string>
     <string name="action_rename_session">重命名</string>

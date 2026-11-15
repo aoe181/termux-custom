@@ -24,6 +24,10 @@ public class ToolItem {
     public String icon;
     /** Shell command to run in the current session. */
     public String command;
+    /** State-check command for "toggle" tools: exit code 0 = ON. Empty/null = normal command tool. */
+    public String checkCommand;
+    /** Runtime state cache for toggle tools: null = unknown, 0 = off, 1 = on. Not persisted. */
+    public transient Integer state;
 
     public ToolItem(String name, String icon, String command) {
         this.id = UUID.randomUUID().toString();
@@ -43,6 +47,11 @@ public class ToolItem {
     private static final String KEY_NAME = "name";
     private static final String KEY_ICON = "icon";
     private static final String KEY_COMMAND = "command";
+    private static final String KEY_CHECK_COMMAND = "checkCommand";
+
+    public boolean isToggle() {
+        return checkCommand != null && !checkCommand.isEmpty();
+    }
 
     public JSONObject toJson() throws JSONException {
         JSONObject o = new JSONObject();
@@ -50,15 +59,18 @@ public class ToolItem {
         o.put(KEY_NAME, name);
         o.put(KEY_ICON, icon);
         o.put(KEY_COMMAND, command);
+        if (isToggle()) o.put(KEY_CHECK_COMMAND, checkCommand);
         return o;
     }
 
     public static ToolItem fromJson(JSONObject o) throws JSONException {
-        return new ToolItem(
+        ToolItem t = new ToolItem(
             o.getString(KEY_ID),
             o.getString(KEY_NAME),
             o.optString(KEY_ICON, "▶"),
             o.getString(KEY_COMMAND));
+        t.checkCommand = o.optString(KEY_CHECK_COMMAND, "");
+        return t;
     }
 
     /** Serialize a list of tools to a JSON string. */
