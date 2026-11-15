@@ -124,7 +124,7 @@ public class TermuxActivityRootView extends LinearLayout implements ViewTreeObse
         } finally {
             long _dt = android.os.SystemClock.elapsedRealtimeNanos() - _t0;
             if (_dt > 16000000L)
-                Logger.logWarning(LOG_TAG, "PERF onGlobalLayout slow: " + (_dt / 1000000L) + "ms");
+                Logger.logError(LOG_TAG, "PERF onGlobalLayout slow: " + (_dt / 1000000L) + "ms");
         }
     }
 

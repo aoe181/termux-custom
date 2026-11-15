@@ -1051,7 +1051,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setDraggerEdgeSize("mRightDragger", mDrawerEdgeSizePx);
         long _dt = android.os.SystemClock.elapsedRealtimeNanos() - _t0;
         if (_dt > 2000000L)
-            Logger.logWarning(LOG_TAG, "PERF applyDrawerEdgeSize slow: " + (_dt / 1000000L) + "ms");
+            Logger.logError(LOG_TAG, "PERF applyDrawerEdgeSize slow: " + (_dt / 1000000L) + "ms");
     }
 
     private void setDraggerEdgeSize(String fieldName, int edgePx) {
