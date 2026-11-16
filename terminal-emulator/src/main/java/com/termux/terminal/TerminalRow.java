@@ -296,6 +296,11 @@ public final class TerminalRow {
         final int used = getSpaceUsed();
         final int limit = Math.min(columnCount, used);
         for (int col = 0; col < limit; col++) {
+            // A bitmap slice is not text, and its style packs (num, x, y) into the colour
+            // bits -- decodeEffect() only looks at the low 11 bits, so it cannot see
+            // TERMINAL_BITMAP and the colour comparisons below could accidentally match the
+            // defaults. Check it explicitly, before anything else can short-circuit.
+            if (TextStyle.isTerminalBitmap(mStyle[col])) return false;
             if (mText[col] != ' ') return false;
             if (TextStyle.decodeEffect(mStyle[col]) != 0) return false;
             if (TextStyle.decodeBackColor(mStyle[col]) != TextStyle.COLOR_INDEX_BACKGROUND) return false;
