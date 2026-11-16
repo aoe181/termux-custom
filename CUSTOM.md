@@ -105,6 +105,12 @@
 | 角标不再卡灰 | 检查结果写进**当前显示的实例**（`findLiveTool(id)`）；原逻辑写进 lambda 捕获的旧实例，而开抽屉会重载列表换掉实例 → 角标永远灰 |
 | 宽限期迁移修正 | 宽限期与 `state` **解耦**分别记录；原判断 `state != null` 恰好排除了唯一需要迁移宽限期的工具（刚点的开关 state 就是 null） |
 | 新建工具无删除键 | 新建对话框的"删除"按钮隐藏（原为可见的死按钮） |
+| **API 24 崩溃修复** | `Process.waitFor(long, TimeUnit)` 是 **API 26**（与 `destroyForcibly()`/`isAlive()` 同批），minSdk 24 上抛 `NoSuchMethodError`（`Error`，`catch(Exception)` 抓不到）→ 检查线程未捕获异常 → **Android 杀进程，App 闪退**。改用 `exitValue()` 轮询（API 1），并把 `catch` 改为 `catch (Throwable)` 让任何链接错误降级为"状态未知" |
+| 语义损坏也备份 | `listFromJson` 在"数组非空但一条都没解析出来"时返回 null → 走 `.corrupt` 备份路径；原行为返回空列表 → 抽屉空白 → 下次 save 把用户原文件覆盖成 `[]`，**无任何备份** |
+| 改检查命令后重新检查 | 编辑开关工具的 checkCommand 时清掉在途检查槽位，否则旧命令的结果被丢弃、新命令又不检查 → 角标灰到下次开抽屉 |
+| 销毁后不碰视图 | 检查结果用 `mMainHandler.post` 而非 `Activity.runOnUiThread`（后者走私有 handler，`onDestroy` 清不掉） |
+| 管理模式按钮语义 | 进入管理模式时 contentDescription 改为"退出管理模式"（原来一直是"管理工具"） |
+| 死代码清理 | 删除无调用方的 `TermuxSessionsListViewController.notifyDataSetChangedSafely()` |
 
 ## 已踩过的坑（勿重犯）
 
@@ -115,6 +121,9 @@
 | 在 `onDrawerOpened` 里 `clear()` + `addAll()` 重载列表 | **ToolItem 实例会被整体换掉**；任何在旧实例上保存的状态（角标、宽限期）都会写进"死对象"，必须按 id 重新查找当前实例 |
 | 用 `state != null` 作为"这个工具有有效状态"的守卫 | 刚点开关的工具 `state` **就是** null（设计上如此），用状态是否为空来判断要不要迁移宽限期，会把最需要迁移的情况排除掉 |
 | 只改 `state` 的迁移、不改 `startGraceUntil` 的迁移 | 两个字段独立演进，必须分别处理，否则角标颜色不一致（灰色 vs 红色） |
+| 注释里写"避开了 API 26 的 `destroyForcibly()`"就以为安全 | **同一批还有 `waitFor(long, TimeUnit)`/`isAlive()`**。`desugar_jdk_libs` **不覆盖 `java.lang.Process`**。校验红线必须**剥离注释后**扫描真实调用 |
+| `catch (Exception e)` 当兜底 | `NoSuchMethodError` 是 `Error`，不是 `Exception`。任何"可能链接失败"的调用都要 `catch (Throwable)` |
+| 用 `pkill -f "sleep 30"` 清理残留 | `-f` 会匹配到**执行 pkill 的 bash 自身** → 把自己杀掉（exit 137）。必须用 `[s]leep 30` 规避 |
 
 ## 测试方法
 

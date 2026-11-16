@@ -92,7 +92,10 @@ public class ToolItem {
     }
 
     /** Parse a JSON string back to a list of tools. Returns null on error.
-     *  Malformed entries are skipped instead of failing (and thus resetting) the whole list. */
+     *  Malformed entries are skipped instead of failing (and thus resetting) the whole
+     *  list - but if *every* entry is unusable the file is broken, not partially
+     *  broken, and null is returned so the caller backs it up. Otherwise the user's
+     *  tools would be replaced by an empty list on the next save, with no backup. */
     public static List<ToolItem> listFromJson(String json) {
         try {
             JSONArray arr = new JSONArray(json);
@@ -104,6 +107,7 @@ public class ToolItem {
                     // Skip just this entry; a single bad tool must not wipe the user's config.
                 }
             }
+            if (arr.length() > 0 && tools.isEmpty()) return null;
             return tools;
         } catch (JSONException e) {
             return null;

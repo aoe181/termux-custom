@@ -852,6 +852,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
      *  failed, covering services that need several seconds to finish starting. */
     private static final long TOGGLE_START_GRACE_MS = 10000;
 
+    /** Hard cap for a single toggle check. The check itself runs under
+     *  `timeout -k 1 2`, so it normally ends after ~2s; this is only the backstop for
+     *  the case where `timeout` itself is broken and the command would run forever. */
+    private static final long TOGGLE_CHECK_TIMEOUT_MS = 4000;
+
     /** Re-check one toggle tool's state (runs checkCommand off the UI thread). */
     private void refreshToggleState(ToolItem tool) {
         refreshToggleState(tool, false);
@@ -904,7 +909,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 long currentToken = tokenObj == null ? 0L : tokenObj;
                 if (token != currentToken) return; // superseded by a forced recheck
             }
-            runOnUiThread(() -> {
+            // Posted through mMainHandler, not Activity.runOnUiThread(): the latter uses
+            // a private handler that onDestroy cannot clear, so a late check result
+            // would still touch the view hierarchy of a destroyed activity.
+            mMainHandler.post(() -> {
                 if (mToolsAdapter == null) return;
                 // The drawer list gets reloaded on every open, so the instance captured
                 // when this check started may already have been replaced. Write the
@@ -962,18 +970,41 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             pb.environment().put("HOME", TermuxConstants.TERMUX_HOME_DIR_PATH);
             pb.environment().put("PREFIX", TermuxConstants.TERMUX_PREFIX_DIR_PATH);
             Process p = pb.start();
-            // Slightly longer than the tool's own limit so it wins the race and we simply
-            // read its exit code instead of having to kill anything from Java.
-            if (!p.waitFor(4, java.util.concurrent.TimeUnit.SECONDS)) {
-                p.destroy();
-                return null;
+            // Process.waitFor(long, TimeUnit) was added in API 26 (same batch as
+            // destroyForcibly()/isAlive()) and core library desugaring does not cover
+            // java.lang.Process, so on API 24/25 it would throw NoSuchMethodError.
+            // That is an Error, not an Exception, and an uncaught Error in a thread
+            // takes the whole app process down. Poll exitValue() instead - it is API 1.
+            // The wait is slightly longer than the tool's own limit so it wins the race
+            // and we simply read its exit code instead of having to kill anything.
+            long deadline = System.currentTimeMillis() + TOGGLE_CHECK_TIMEOUT_MS;
+            int exit;
+            while (true) {
+                try {
+                    exit = p.exitValue();
+                    break;
+                } catch (IllegalThreadStateException stillRunning) {
+                    // The check has not finished yet; fall through to the timeout check.
+                }
+                if (System.currentTimeMillis() >= deadline) {
+                    p.destroy();
+                    return null;
+                }
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    p.destroy();
+                    return null;
+                }
             }
-            int exit = p.exitValue();
             // 124 = timed out. 125+ = timeout itself failed (missing binary, not
             // executable); that is "unknown", not "off", so don't paint the badge red.
             if (exit == 124 || exit >= 125) return null;
             return exit == 0 ? 1 : 0;
-        } catch (Exception e) {
+        } catch (Throwable e) {
+            // Throwable, not Exception: a linkage error (NoSuchMethodError from an API
+            // level we do not support) must degrade to "state unknown", never crash.
             return null;
         }
     }
@@ -1020,6 +1051,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             title.setText(R.string.tools_manage_mode_hint);
             manageButton.setImageResource(R.drawable.ic_done);
             manageButton.setAlpha(1f);
+            // The button now finishes the mode, so say so instead of repeating
+            // "manage tools", which is what it did before.
+            manageButton.setContentDescription(getString(R.string.tools_manage_mode_exit));
             manageButton.setColorFilter(
                 ContextCompat.getColor(this, android.R.color.holo_blue_light));
             Logger.showToast(this, getString(R.string.tools_manage_mode_hint), false);
@@ -1027,6 +1061,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             title.setText(R.string.tools_drawer_title);
             manageButton.setImageResource(R.drawable.ic_reorder);
             manageButton.setAlpha(0.6f);
+            manageButton.setContentDescription(getString(R.string.tools_manage_mode));
             manageButton.clearColorFilter();
             // Persist the (possibly new) order on exit.
             if (!ToolStore.save(this, mToolsAdapter.getTools()))
@@ -1145,15 +1180,21 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     RecyclerView grid = findViewById(R.id.tools_recycler_view);
                     if (grid != null) grid.smoothScrollToPosition(mToolsAdapter.getItemCount() - 1);
                 } else {
+                    // A changed check command invalidates the check that is running
+                    // right now: its result would be thrown away on arrival and
+                    // nothing would replace it, leaving the badge grey until the
+                    // drawer is opened again.
+                    boolean checkChanged = !check.equals(tool.checkCommand);
                     tool.name = name;
                     tool.icon = icon;
                     tool.command = command;
                     tool.checkCommand = check;
                     tool.state = null;
                     tool.startGraceUntil = 0;
-                    // Clear any in-flight bookkeeping when a tool stops being a toggle, so
-                    // a stale entry cannot linger in the maps forever.
-                    if (!tool.isToggle()) {
+                    // Clear any in-flight bookkeeping when a tool stops being a toggle
+                    // or its check command changed, so a stale entry cannot linger in
+                    // the maps and the next refresh starts a check of the new command.
+                    if (!tool.isToggle() || checkChanged) {
                         synchronized (mToggleChecksInFlight) {
                             mToggleChecksInFlight.remove(tool.id);
                             mToggleCheckToken.remove(tool.id);

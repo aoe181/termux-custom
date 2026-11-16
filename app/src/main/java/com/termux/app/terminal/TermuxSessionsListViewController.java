@@ -132,11 +132,6 @@ public class TermuxSessionsListViewController extends RecyclerView.Adapter<Termu
         return mSessions.size();
     }
 
-    /** Refresh the list display (call after sessions change). */
-    public void notifyDataSetChangedSafely() {
-        notifyDataSetChanged();
-    }
-
     private void showSessionMenu(TerminalSession terminalSession) {
         String currentName = terminalSession.mSessionName;
         if (currentName == null || currentName.isEmpty())
