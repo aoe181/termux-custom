@@ -102,6 +102,9 @@
 | 全屏冲突修复 | `fullscreen-mode=no` 时若已有 `FLAG_FULLSCREEN` 则跳过 `show(bars)`，避免两个设置互相抵消 |
 | Handler 复用 | 单个 `mMainHandler` + `onDestroy` 里 `removeCallbacksAndMessages(null)` |
 | 拖拽保存提示 | 排序落盘失败时 Toast（原来静默） |
+| 角标不再卡灰 | 检查结果写进**当前显示的实例**（`findLiveTool(id)`）；原逻辑写进 lambda 捕获的旧实例，而开抽屉会重载列表换掉实例 → 角标永远灰 |
+| 宽限期迁移修正 | 宽限期与 `state` **解耦**分别记录；原判断 `state != null` 恰好排除了唯一需要迁移宽限期的工具（刚点的开关 state 就是 null） |
+| 新建工具无删除键 | 新建对话框的"删除"按钮隐藏（原为可见的死按钮） |
 
 ## 已踩过的坑（勿重犯）
 
@@ -109,6 +112,9 @@
 |---|---|
 | 给 `setDraggerEdgeSize` 加"已应用则跳过"缓存 | **DrawerLayout 每次布局都会重置 edgeSize**，缓存会让侧栏边缘滑动永久失效 |
 | 抽屉打开时暂停终端绘制 | 只能整块暂停（渲染器无"只画前 N 列"参数），`clipRect` 省不了 CPU |
+| 在 `onDrawerOpened` 里 `clear()` + `addAll()` 重载列表 | **ToolItem 实例会被整体换掉**；任何在旧实例上保存的状态（角标、宽限期）都会写进"死对象"，必须按 id 重新查找当前实例 |
+| 用 `state != null` 作为"这个工具有有效状态"的守卫 | 刚点开关的工具 `state` **就是** null（设计上如此），用状态是否为空来判断要不要迁移宽限期，会把最需要迁移的情况排除掉 |
+| 只改 `state` 的迁移、不改 `startGraceUntil` 的迁移 | 两个字段独立演进，必须分别处理，否则角标颜色不一致（灰色 vs 红色） |
 
 ## 测试方法
 
