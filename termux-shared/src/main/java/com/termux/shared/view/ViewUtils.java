@@ -168,8 +168,14 @@ public class ViewUtils {
      * @return {@link Configuration#ORIENTATION_PORTRAIT} or {@link Configuration#ORIENTATION_LANDSCAPE}.
      */
     public static int getDisplayOrientation(@NonNull Context context) {
-        Point size = getDisplaySize(context, false);
-        return (size.x < size.y) ? Configuration.ORIENTATION_PORTRAIT : Configuration.ORIENTATION_LANDSCAPE;
+        // Read the configuration instead of measuring the display: computing window metrics
+        // goes through WindowMetricsCalculator, which is a binder round trip to the window
+        // manager on every call. This runs from onGlobalLayout() on every layout pass (soft
+        // keyboard show/hide, drawer open/close, rotation), so the IPC showed up in the
+        // window-resize path. The activity's configuration already carries the orientation,
+        // and it is the orientation of the window we are laying out - which is what the
+        // multi-window branch below actually wants to know, rather than the physical display.
+        return context.getResources().getConfiguration().orientation;
     }
 
     /**
