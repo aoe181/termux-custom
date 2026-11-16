@@ -283,6 +283,29 @@ public final class TerminalRow {
         return true;
     }
 
+    /** True if the first {@code columnCount} columns contain nothing that has to be drawn:
+     *  every cell is a plain space in the default style.
+     *
+     *  Used by the renderer to skip rows that would otherwise be walked cell by cell only
+     *  to emit a single drawTextRun of invisible spaces - on a mostly empty screen that is
+     *  about 95% of all rows. Deliberately stricter than {@link #isBlank()}: that one only
+     *  looks at the characters, while a "blank" row can still need painting (a non-default
+     *  background, or reverse video). Anything not provably plain is reported as visible, so
+     *  a missed case degrades to the old behaviour instead of dropping pixels. */
+    public boolean isBlankForColumns(int columnCount) {
+        final int used = getSpaceUsed();
+        final int limit = Math.min(columnCount, used);
+        for (int col = 0; col < limit; col++) {
+            if (mText[col] != ' ') return false;
+            if (TextStyle.decodeEffect(mStyle[col]) != 0) return false;
+            if (TextStyle.decodeBackColor(mStyle[col]) != TextStyle.COLOR_INDEX_BACKGROUND) return false;
+            if (TextStyle.decodeForeColor(mStyle[col]) != TextStyle.COLOR_INDEX_FOREGROUND) return false;
+        }
+        // Chars beyond {@link #mColumns} can exist as spares; nothing past columnCount is
+        // drawn, so they do not matter here.
+        return true;
+    }
+
     public final long getStyle(int column) {
         return mStyle[column];
     }

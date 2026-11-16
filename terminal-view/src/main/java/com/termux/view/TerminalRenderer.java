@@ -98,6 +98,19 @@ public final class TerminalRenderer {
             final char[] line = lineObject.mText;
             final int charsUsedInLine = lineObject.getSpaceUsed();
 
+            // Skip rows that are provably nothing but default-styled spaces. The loop below
+            // would otherwise scan every column of them and end with a single drawTextRun
+            // painting invisible spaces: on a mostly empty screen that is most of the rows.
+            // Three cases are excluded because they need this row painted even when the text
+            // is all spaces: the cursor row (drawn by the run loop), a selected row (the
+            // selection background), and reverse video (the whole row inverts). Everything
+            // else is left to isBlankForColumns(), which only returns true when both the
+            // characters and the styles are the plain default.
+            if (cursorX == -1 && selx1 == -1 && selx2 == -1 && !reverseVideo
+                && lineObject.isBlankForColumns(columns)) {
+                continue;
+            }
+
             long lastRunStyle = 0;
             boolean lastRunInsideCursor = false;
             boolean lastRunInsideSelection = false;
