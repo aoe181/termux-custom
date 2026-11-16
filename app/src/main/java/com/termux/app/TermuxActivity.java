@@ -688,8 +688,16 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     mToolsAdapter.notifyDataSetChanged();
                     // Forced recheck invalidates any result still in flight from before the
                     // toggle ran, so a stale pre-toggle state cannot land after the reset.
-                    mMainHandler.postDelayed(() -> refreshToggleStateForced(tool), 800);
-                    mMainHandler.postDelayed(() -> refreshToggleState(tool), 3000);
+                    // Look the tool up again when the timer fires: reopening the drawer
+                    // reloads the list and replaces the instance captured here.
+                    mMainHandler.postDelayed(() -> {
+                        ToolItem live = findLiveTool(tool);
+                        if (live != null) refreshToggleStateForced(live);
+                    }, 800);
+                    mMainHandler.postDelayed(() -> {
+                        ToolItem live = findLiveTool(tool);
+                        if (live != null) refreshToggleState(live);
+                    }, 3000);
                     // Repaint only (no command, no process) once the grace period ends, so
                     // a still-off badge turns red instead of sitting grey forever.
                     if (tool.startGraceUntil > 0) {
@@ -788,10 +796,18 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 java.util.Map<String, String> previousChecks = new java.util.HashMap<>();
                 java.util.Map<String, Long> previousGrace = new java.util.HashMap<>();
                 for (ToolItem t : current) {
-                    if (t.isToggle() && t.state != null) {
+                    if (!t.isToggle()) continue;
+                    if (t.state != null) {
                         previousStates.put(t.id, t.state);
                         previousChecks.put(t.id, t.checkCommand);
+                    }
+                    // A service that is still booting has no state yet (the toggle sets
+                    // state to null), so the grace window has to be carried over on its
+                    // own - otherwise reopening the drawer paints the badge red while
+                    // the service is still starting up.
+                    if (t.startGraceUntil > 0) {
                         previousGrace.put(t.id, t.startGraceUntil);
+                        previousChecks.put(t.id, t.checkCommand);
                     }
                 }
 
@@ -851,6 +867,20 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         refreshToggleState(tool, true);
     }
 
+    /** Find the tool instance that is currently displayed in the drawer.
+     *  The list is reloaded from disk every time the drawer opens, which replaces the
+     *  ToolItem instances. A reference captured earlier therefore may no longer be the
+     *  one on screen, and writing a check result into it would be invisible. */
+    private ToolItem findLiveTool(ToolItem tool) {
+        if (mToolsAdapter == null || tool == null || tool.id == null) return null;
+        List<ToolItem> tools = mToolsAdapter.getTools();
+        for (int i = 0; i < tools.size(); i++) {
+            ToolItem t = tools.get(i);
+            if (tool.id.equals(t.id)) return t;
+        }
+        return null;
+    }
+
     /** @param force start a check even if one for this tool is already running */
     private void refreshToggleState(ToolItem tool, boolean force) {
         if (!tool.isToggle()) return;
@@ -875,10 +905,17 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 if (token != currentToken) return; // superseded by a forced recheck
             }
             runOnUiThread(() -> {
+                if (mToolsAdapter == null) return;
+                // The drawer list gets reloaded on every open, so the instance captured
+                // when this check started may already have been replaced. Write the
+                // result into the instance that is on screen now, otherwise the badge
+                // would stay stuck on "unknown" for the rest of the session.
+                ToolItem live = findLiveTool(tool);
+                if (live == null) return;
                 // The command may have been edited while the check was running.
-                if (!checkCommand.equals(tool.checkCommand)) return;
-                tool.state = state;
-                if (mToolsAdapter != null) mToolsAdapter.notifyDataSetChanged();
+                if (!checkCommand.equals(live.checkCommand)) return;
+                live.state = state;
+                mToolsAdapter.notifyDataSetChanged();
             });
         }).start();
     }
@@ -1132,6 +1169,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
             // Delete needs its own confirmation: a mis-tap would destroy the tool and its
             // command, which can be a long one-liner that is painful to retype.
+            // A brand new tool has nothing to delete, so hide the button instead of
+            // leaving a dead one on screen.
+            if (isNew)
+                dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setVisibility(View.GONE);
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
                 if (isNew) return;
                 new AlertDialog.Builder(this)
