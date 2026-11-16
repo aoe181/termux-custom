@@ -99,7 +99,7 @@ jobs:
             "${{ steps.apk.outputs.release }}" \
             "${{ steps.apk.outputs.debug }}"
 
-      - name: Cleanup old pre-releases (keep newest 3)
+      - name: Cleanup old pre-releases (keep newest 8)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
