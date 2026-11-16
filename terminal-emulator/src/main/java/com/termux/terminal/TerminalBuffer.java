@@ -508,6 +508,24 @@ public final class TerminalBuffer {
             throw new IllegalArgumentException(
                 "Illegal arguments! blockSet(" + sx + ", " + sy + ", " + w + ", " + h + ", " + val + ", " + mColumns + ", " + mScreenRows + ")");
         }
+        // Filling whole rows with plain spaces is what clear() already does, in one
+        // Arrays.fill instead of mColumns separate setChar() calls. On a CJK row each of
+        // those calls also walks the row (wideDisplayCharacterStartingAt + findStartOfColumn)
+        // because mHasNonOneWidthOrSurrogateChars stays set, so a full-screen erase cost
+        // O(columns^2) array reads. Whole-row blanking is the common case: session
+        // construction, ED (erase display) and the bottom row after a scroll.
+        //
+        // Only taken when the full width is covered from column 0 and the value is a space,
+        // so the result is identical to the per-cell loop: clear() resets every cell to
+        // ' ' with the given style and rewinds mSpaceUsed, which is what setting each
+        // column to a space ends up producing. Rows not covered are left untouched.
+        if (sx == 0 && w == mColumns && val == ' ') {
+            for (int y = 0; y < h; y++) {
+                allocateFullLineIfNecessary(externalToInternalRow(sy + y)).clear(style);
+                clearLineWrap(sy + y);
+            }
+            return;
+        }
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++)
                 setChar(sx + x, sy + y, val, style);

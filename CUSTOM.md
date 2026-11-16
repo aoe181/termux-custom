@@ -85,13 +85,19 @@
 |---|---|
 | `TerminalRow.findStartOfColumn` 线性扫描 | 专项测量：写第 90 列 vs 第 2 列比值 0.93 / 1.06 ≈ 1.0，**不是瓶颈** |
 | 外层 `switch (b)` 跳表 | 13 个 case、值域 0–27，ART 编译成 `tableswitch`，已是 O(1) |
-| `WcWidth.width` | BMP 已是 O(1) 数组查表 |
+| `WcWidth.width` | BMP 已是 O(1) 数组查表——**由 `7a5e73f9`（2026-11-15）优化**：原二分查找对 ASCII 第一次比较即退出，但中文要扫 16 次，是当时 1470ms → 500ms 的主因 |
+| `Character.getType()` | CJK/扩展A/韩文全分配块走快速通道——**同由 `7a5e73f9` 优化** |
+| sixtel bitmap GC | 逐字符 → 逐块——**同由 `7a5e73f9` 优化**（原每字符都要加锁 + 时间检查） |
 | `terminal-transcript-rows` 调小 | 行对象懒分配（`allocateFullLineIfNecessary`），只影响 resize 遍历，收益极小 |
 | `ByteQueue` | 64KB 环形缓冲，`System.arraycopy` 搬运，无额外分配 |
 | Message 调度 | 每 4KB 一次 `sendEmptyMessage`，24000 字节仅 6 次调度 ≈ 18µs |
 | 会话列表 `notifyDataSetChanged` | 最多 8 项，全量 rebind 可忽略 |
 | 光标闪烁 / 无障碍 | 默认值分别是 `0`（禁用）和未开启，已是最优 |
 | `render()` 里的对象分配 | `onDraw` 已是零分配 |
+
+> **注意指标口径**：`7a5e73f9` 的「1470ms → 500ms」是**一次性输出 2 万行（≈500KB）的总耗时**；
+> 本轮用的「1500 ms/s」是**持续刷屏时每秒消耗的 CPU**（约 8 MB/s 吞吐）。
+> 两者不可直接比较。按本轮实测 200 ns/字节折算，2 万行 ≈ 100ms，说明那轮之后吞吐又有提升。
 
 **剩余真实开销**（改不动或代价高）：解析 180 ns/字节 ≈ 5.6 MB/s 吞吐（健康水平），
 纯渲染 400 ms/s。「输出时停顿几秒」的成因是一次性输出几 MB 把主线程队列填满，
