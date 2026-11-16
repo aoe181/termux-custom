@@ -95,6 +95,20 @@
 | 保存失败提示 | `ToolStore.save()` 返回 false 时 Toast 提示 |
 | API 24 兼容 | 移除 `java.nio.file.Files`（API 26），改用 `java.io`/`FileUtils`；`NoClassDefFoundError` 不被 `catch(Exception)` 捕获 |
 | 慢启动宽限 | 点开启后 10s 内"检测为关"显示灰色而非红色；仅开启方向生效，10s 后安排一次纯重绘 |
+| 单条损坏不再丢失 | `fromJson` 补 `id`/`icon`/`checkCommand` 默认值，只有 name+command 都空才丢弃（原行为：跳过该条 → 下次 save 永久消失） |
+| 检查零孤儿 | 检查命令用 `timeout -k 1 2` 外包，超时杀整个进程组；避免 `Process.pid()`/`destroyForcibly()`（API 26，minSdk 24） |
+| 命令 trim | 末尾换行会被 `paste()` 转成 `\r` 导致提前执行；`command` 与 `name` 一起 trim |
+| 空命令不加回车 | `runDrawerCommand` 对空命令早退，否则 `paste("")` + `write("\r")` 会在 TUI 里误确认 |
+| 全屏冲突修复 | `fullscreen-mode=no` 时若已有 `FLAG_FULLSCREEN` 则跳过 `show(bars)`，避免两个设置互相抵消 |
+| Handler 复用 | 单个 `mMainHandler` + `onDestroy` 里 `removeCallbacksAndMessages(null)` |
+| 拖拽保存提示 | 排序落盘失败时 Toast（原来静默） |
+
+## 已踩过的坑（勿重犯）
+
+| 改动 | 后果 |
+|---|---|
+| 给 `setDraggerEdgeSize` 加"已应用则跳过"缓存 | **DrawerLayout 每次布局都会重置 edgeSize**，缓存会让侧栏边缘滑动永久失效 |
+| 抽屉打开时暂停终端绘制 | 只能整块暂停（渲染器无"只画前 N 列"参数），`clipRect` 省不了 CPU |
 
 ## 测试方法
 
