@@ -114,9 +114,37 @@
 
 ## 已踩过的坑（勿重犯）
 
+### 抽屉边缘尺寸：为什么必须每次布局重应用（已用源码证实）
+
+`androidx.drawerlayout:drawerlayout:1.2.0` 的 `DrawerLayout.onLayout()` 末尾：
+
+```java
+if (sEdgeSizeUsingSystemGestureInsets) {        // Build.VERSION.SDK_INT >= 29
+    Insets gestureInsets = rootInsets.getSystemGestureInsets();
+    mLeftDragger.setEdgeSize(Math.max(mLeftDragger.getDefaultEdgeSize(), gestureInsets.left));
+    mRightDragger.setEdgeSize(Math.max(mRightDragger.getDefaultEdgeSize(), gestureInsets.right));
+}
+```
+
+`ViewDragHelper`（`androidx.customview:customview:1.1.0`）里有**两个独立字段**：
+
+- `mDefaultEdgeSize` —— 内置默认值，`setEdgeSize()` 永远改不动它
+- `mEdgeSize` —— 当前值，`setEdgeSize()` 改的是它；`getEdgeSize()` 返回它
+
+所以每次布局都会把 `mEdgeSize` **重置回** `max(内置默认值, 手势区 inset)`，我们设置的大边缘区被彻底抹掉。
+**因此"每次布局重新 apply"是必需的，不是冗余。**
+
+验证方式（无需联网源码，随时可复现）：
+
+```bash
+# 取我们实际使用的版本源码
+curl -sLO https://dl.google.com/dl/android/maven2/androidx/drawerlayout/drawerlayout/1.2.0/drawerlayout-1.2.0-sources.jar
+unzip -o -q drawerlayout-1.2.0-sources.jar && grep -n -B4 -A12 setEdgeSize androidx/drawerlayout/widget/DrawerLayout.java
+```
+
 | 改动 | 后果 |
 |---|---|
-| 给 `setDraggerEdgeSize` 加"已应用则跳过"缓存 | **DrawerLayout 每次布局都会重置 edgeSize**，缓存会让侧栏边缘滑动永久失效 |
+| 给 `setDraggerEdgeSize` 加"已应用则跳过"缓存 | **DrawerLayout 每次布局都会重置 edgeSize**，缓存会让侧栏边缘滑动永久失效（已用 1.2.0 源码证实，见下） |
 | 抽屉打开时暂停终端绘制 | 只能整块暂停（渲染器无"只画前 N 列"参数），`clipRect` 省不了 CPU |
 | 在 `onDrawerOpened` 里 `clear()` + `addAll()` 重载列表 | **ToolItem 实例会被整体换掉**；任何在旧实例上保存的状态（角标、宽限期）都会写进"死对象"，必须按 id 重新查找当前实例 |
 | 用 `state != null` 作为"这个工具有有效状态"的守卫 | 刚点开关的工具 `state` **就是** null（设计上如此），用状态是否为空来判断要不要迁移宽限期，会把最需要迁移的情况排除掉 |
