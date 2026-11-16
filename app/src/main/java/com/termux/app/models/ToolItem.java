@@ -68,11 +68,18 @@ public class ToolItem {
     }
 
     public static ToolItem fromJson(JSONObject o) throws JSONException {
-        ToolItem t = new ToolItem(
-            o.getString(KEY_ID),
-            o.getString(KEY_NAME),
-            o.optString(KEY_ICON, "▶"),
-            o.getString(KEY_COMMAND));
+        // Only name and command are essential; id/icon/checkCommand are repaired when
+        // missing so a hand-edited file that lost one of them keeps the tool instead of
+        // silently dropping it on the next save.
+        String command = o.optString(KEY_COMMAND, "");
+        String name = o.optString(KEY_NAME, "");
+        if (command.isEmpty() && name.isEmpty())
+            throw new JSONException("entry has neither name nor command");
+
+        String id = o.optString(KEY_ID, "");
+        if (id.isEmpty()) id = UUID.randomUUID().toString();
+
+        ToolItem t = new ToolItem(id, name, o.optString(KEY_ICON, "▶"), command);
         t.checkCommand = o.optString(KEY_CHECK_COMMAND, "");
         return t;
     }

@@ -403,6 +403,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         Logger.logDebug(LOG_TAG, "onDestroy");
 
+        // Drop pending toggle re-checks: their callbacks reference this activity and the
+        // tools adapter, so leaving them queued keeps the activity alive and lets a late
+        // task touch a destroyed view hierarchy.
+        mMainHandler.removeCallbacksAndMessages(null);
+
         if (mIsInvalidState) return;
 
         if (mTermuxService != null) {
@@ -683,12 +688,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     mToolsAdapter.notifyDataSetChanged();
                     // Forced recheck invalidates any result still in flight from before the
                     // toggle ran, so a stale pre-toggle state cannot land after the reset.
-                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> refreshToggleStateForced(tool), 800);
-                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> refreshToggleState(tool), 3000);
+                    mMainHandler.postDelayed(() -> refreshToggleStateForced(tool), 800);
+                    mMainHandler.postDelayed(() -> refreshToggleState(tool), 3000);
                     // Repaint only (no command, no process) once the grace period ends, so
                     // a still-off badge turns red instead of sitting grey forever.
                     if (tool.startGraceUntil > 0) {
-                        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                        mMainHandler.postDelayed(() -> {
                             if (mToolsAdapter != null) mToolsAdapter.notifyDataSetChanged();
                         }, TOGGLE_START_GRACE_MS);
                     }
@@ -700,7 +705,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 // Long-press is reserved for dragging inside manage mode; in normal
                 // mode it does nothing (editing lives behind the manage button).
             }
-        }, () -> ToolStore.save(this, mToolsAdapter.getTools()));
+        }, () -> {
+            // Drag-to-reorder persistence: warn on failure, the order would silently
+            // revert on the next drawer open otherwise.
+            if (!ToolStore.save(this, mToolsAdapter.getTools()))
+                Logger.showToast(this, getString(R.string.tools_save_failed), false);
+        });
         toolsRecyclerView.setAdapter(adapter);
         mToolsAdapter = adapter;
         // Drag-to-reorder tools, started via the title-bar toggle button (reorder mode)
@@ -776,10 +786,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 // list does not blank every badge until the checks finish.
                 java.util.Map<String, Integer> previousStates = new java.util.HashMap<>();
                 java.util.Map<String, String> previousChecks = new java.util.HashMap<>();
+                java.util.Map<String, Long> previousGrace = new java.util.HashMap<>();
                 for (ToolItem t : current) {
                     if (t.isToggle() && t.state != null) {
                         previousStates.put(t.id, t.state);
                         previousChecks.put(t.id, t.checkCommand);
+                        previousGrace.put(t.id, t.startGraceUntil);
                     }
                 }
 
@@ -789,8 +801,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     if (!t.isToggle()) continue;
                     // Reuse the old state only if the check command itself is unchanged,
                     // otherwise the badge would describe a different command.
-                    if (t.checkCommand.equals(previousChecks.get(t.id)))
+                    if (t.checkCommand.equals(previousChecks.get(t.id))) {
                         t.state = previousStates.get(t.id);
+                        // Keep the start-up grace period too, or reopening the drawer right
+                        // after starting a service would show red instead of "still starting".
+                        Long grace = previousGrace.get(t.id);
+                        if (grace != null) t.startGraceUntil = grace;
+                    }
                 }
                 mToolsAdapter.notifyDataSetChanged();
                 refreshAllToggleStates();
@@ -808,6 +825,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         // Initial state check for toggle tools.
         refreshAllToggleStates();
     }
+
+    /** Shared main-thread handler for delayed toggle re-checks. Reused instead of
+     *  allocating one per tap, and cleared in onDestroy so pending posts do not hold the
+     *  activity after it is gone. */
+    private final android.os.Handler mMainHandler =
+        new android.os.Handler(android.os.Looper.getMainLooper());
 
     /** How long after tapping a toggle an "off" result is shown as unknown instead of
      *  failed, covering services that need several seconds to finish starting. */
@@ -882,7 +905,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     /** Run a toggle tool's check command outside the terminal; exit code 0 = on. */
     private Integer runToggleCheck(String cmd) {
         try {
+            // coreutils `timeout` enforces the limit inside the shell and kills the whole
+            // process group, so a piped command (e.g. "ls ... | head -1") cannot leave
+            // jq/curl orphans behind. Doing it here instead of with Process.destroy() also
+            // avoids Process.pid()/destroyForcibly(), which need API 26 while this APK
+            // supports API 24. Exit code 124 means the timeout fired.
             ProcessBuilder pb = new ProcessBuilder(
+                TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/bin/timeout",
+                "-k", "1", "2",
                 TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/bin/bash", "-c", cmd)
                 // Discard output so a noisy check can't block on the 64KB pipe.
                 .redirectOutput(new java.io.File("/dev/null"))
@@ -895,11 +925,17 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             pb.environment().put("HOME", TermuxConstants.TERMUX_HOME_DIR_PATH);
             pb.environment().put("PREFIX", TermuxConstants.TERMUX_PREFIX_DIR_PATH);
             Process p = pb.start();
-            if (!p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) {
+            // Slightly longer than the tool's own limit so it wins the race and we simply
+            // read its exit code instead of having to kill anything from Java.
+            if (!p.waitFor(4, java.util.concurrent.TimeUnit.SECONDS)) {
                 p.destroy();
                 return null;
             }
-            return p.exitValue() == 0 ? 1 : 0;
+            int exit = p.exitValue();
+            // 124 = timed out. 125+ = timeout itself failed (missing binary, not
+            // executable); that is "unknown", not "off", so don't paint the badge red.
+            if (exit == 124 || exit >= 125) return null;
+            return exit == 0 ? 1 : 0;
         } catch (Exception e) {
             return null;
         }
@@ -909,6 +945,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     /** Run a command in the current session, or a fresh one when the current is busy
      *  in a TUI/fullscreen app (same routing as quick tools). */
     private void runDrawerCommand(String command) {
+        // An empty command would paste nothing but still send the trailing CR, which
+        // presses Enter in whatever shell or TUI is in front (accidental confirm/cancel).
+        if (command == null || command.isEmpty()) return;
         TerminalSession session = getCurrentSession();
         boolean sessionBusy = session != null && session.isRunning()
             && session.getEmulator() != null && session.getEmulator().isAlternateBufferActive();
@@ -1052,7 +1091,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
                 String name = nameInput.getText().toString().trim();
                 String icon = iconInput.getText().toString().trim();
-                String command = commandInput.getText().toString();
+                // Trailing whitespace/newlines would make paste() emit extra Enter presses
+                // (it converts \n to \r) and run the command early, so trim the ends only.
+                String command = commandInput.getText().toString().trim();
                 String check = checkInput.getText().toString().trim();
                 if (name.isEmpty() || command.isEmpty()) {
                     Logger.showToast(this, getString(R.string.tools_empty_error), false);
@@ -1072,6 +1113,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     tool.command = command;
                     tool.checkCommand = check;
                     tool.state = null;
+                    tool.startGraceUntil = 0;
+                    // Clear any in-flight bookkeeping when a tool stops being a toggle, so
+                    // a stale entry cannot linger in the maps forever.
+                    if (!tool.isToggle()) {
+                        synchronized (mToggleChecksInFlight) {
+                            mToggleChecksInFlight.remove(tool.id);
+                            mToggleCheckToken.remove(tool.id);
+                        }
+                    }
                     mToolsAdapter.notifyDataSetChanged();
                 }
                 if (!ToolStore.save(this, mToolsAdapter.getTools()))
@@ -1249,6 +1299,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         WindowInsetsControllerCompat controller = ViewCompat.getWindowInsetsController(decorView);
         if (controller == null) return;
 
+        boolean flagFullscreen =
+            (getWindow().getAttributes().flags & WindowManager.LayoutParams.FLAG_FULLSCREEN) != 0;
+
         switch (mode) {
             case com.termux.shared.termux.settings.properties.TermuxPropertyConstants.IVALUE_FULL_SCREEN_MODE_STATUS:
                 controller.hide(WindowInsetsCompat.Type.statusBars());
@@ -1259,7 +1312,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 controller.hide(WindowInsetsCompat.Type.systemBars());
                 break;
             default:
-                controller.show(WindowInsetsCompat.Type.systemBars());
+                // "no": restore the bars, unless the legacy `fullscreen=true` property is
+                // in effect - FLAG_FULLSCREEN hides the status bar by itself and calling
+                // show() here would undo it (the two settings would fight each other).
+                if (!flagFullscreen) controller.show(WindowInsetsCompat.Type.systemBars());
                 break;
         }
     }
@@ -1296,6 +1352,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             }
             Object dragger = f.get(getDrawer());
             if (dragger instanceof androidx.customview.widget.ViewDragHelper) {
+                // Re-applied on every layout pass on purpose: DrawerLayout resets the edge
+                // size to max(default, gestureInsets) during its own layout, so caching
+                // "already applied" would silently disable the enlarged swipe zone.
                 ((androidx.customview.widget.ViewDragHelper) dragger).setEdgeSize(edgePx);
             }
         } catch (Exception e) {

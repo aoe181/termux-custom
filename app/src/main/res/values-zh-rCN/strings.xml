@@ -48,7 +48,6 @@
     <string name="tools_delete">删除</string>
     <string name="tools_save">保存</string>
     <string name="tools_cancel">取消</string>
-    <string name="tools_no_session">没有正在运行的会话</string>
     <string name="tools_empty_error">名称和命令不能为空</string>
     <string name="tools_delete_confirm">删除“%1$s”？命令内容将丢失。</string>
     <string name="tools_save_failed">无法保存工具配置文件</string>
