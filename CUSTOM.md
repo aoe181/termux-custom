@@ -58,6 +58,45 @@
 | 渲染 run 合并 | 宽度状态变化才断 run，连续中文整段一次绘制 |
 | 抽屉反射 Field 缓存 | onGlobalLayout 每次布局不再重复 getDeclaredField |
 
+### 渲染/布局再优化（2026-11-17，实测纯渲染 661 → 400 ms/s）
+
+| 改动 | 提交 | 说明 |
+|---|---|---|
+| 非 ASCII 宽度缓存 | `863e9756` | `asciiMeasures` 只覆盖 0–126，中文每个码点每帧都调 `Paint.measureText`（JNI）。加 `SparseIntArray` 按码点缓存；`TerminalRenderer` 随字体/字号重建，缓存不会失效错位 |
+| 跳过纯空白行 | `b6d6ad08` | `TerminalRow.isBlankForColumns()` 判定该行是否只有默认样式的空格；是则整行 `continue`。**必须排除**：光标行、选中行、反色屏幕、非默认背景/效果、**Sixel 位图**（`TERMINAL_BITMAP` 是 bit 15，而 `decodeEffect()` 只掩码 bit 0–8，看不到它，位图会消失——见 `b38a312d`） |
+| 方向不再查 binder | `a01dcf6c` | `getDisplayOrientation()` 原来走 `WindowMetricsCalculator.computeMaximumWindowMetrics()`（binder IPC），从 `onGlobalLayout()` 每次布局都调（键盘弹收、抽屉开合、旋转）。改用 `Configuration.orientation` |
+
+**实测方法（重要）**：必须把渲染从解析里**隔离**出来。
+`printf > /dev/tty` 的速率被终端读入速率限制，而解析和绘制都在主线程，
+采样 `/proc/<pid>/stat` 得到的是**两者之和**——用它对比新旧包会得出「无效」的错误结论。
+
+- 测纯渲染：先刷满屏中文，然后**不再产生输出**，只反复触发重绘
+  （`\e[C`/`\e[D` 光标移动，或 `\e[5~`/`\e[6~` 翻历史），**且必须限速**
+  （sleep 5ms），否则同帧内多次 `invalidate()` 会被合并成一次 `onDraw`
+- 采样：`/proc/<pid>/stat` 的 utime+stime，本机 `SC_CLK_TCK=100` → 1 jiffy = 10ms
+- 单项必须跑够长（≥3 秒 / ≥300 jiffy），否则 10ms 粒度下噪声吞掉信号
+
+结果：光标移动 661 → 411 ms/s（-37.8%），历史滚动 657 → 384 ms/s（-41.5%），
+两次测量一致，远大于噪声。
+
+### 已排除的性能候选（勿重复调查）
+
+| 候选 | 实测/代码依据 |
+|---|---|
+| `TerminalRow.findStartOfColumn` 线性扫描 | 专项测量：写第 90 列 vs 第 2 列比值 0.93 / 1.06 ≈ 1.0，**不是瓶颈** |
+| 外层 `switch (b)` 跳表 | 13 个 case、值域 0–27，ART 编译成 `tableswitch`，已是 O(1) |
+| `WcWidth.width` | BMP 已是 O(1) 数组查表 |
+| `terminal-transcript-rows` 调小 | 行对象懒分配（`allocateFullLineIfNecessary`），只影响 resize 遍历，收益极小 |
+| `ByteQueue` | 64KB 环形缓冲，`System.arraycopy` 搬运，无额外分配 |
+| Message 调度 | 每 4KB 一次 `sendEmptyMessage`，24000 字节仅 6 次调度 ≈ 18µs |
+| 会话列表 `notifyDataSetChanged` | 最多 8 项，全量 rebind 可忽略 |
+| 光标闪烁 / 无障碍 | 默认值分别是 `0`（禁用）和未开启，已是最优 |
+| `render()` 里的对象分配 | `onDraw` 已是零分配 |
+
+**剩余真实开销**（改不动或代价高）：解析 180 ns/字节 ≈ 5.6 MB/s 吞吐（健康水平），
+纯渲染 400 ms/s。「输出时停顿几秒」的成因是一次性输出几 MB 把主线程队列填满，
+属于处理该数据量的固有成本；唯一可动的是降低重绘频率，但会牺牲实时性。
+
 ### 构建/工程
 | 改动 | 说明 |
 |---|---|
@@ -152,6 +191,12 @@ unzip -o -q drawerlayout-1.2.0-sources.jar && grep -n -B4 -A12 setEdgeSize andro
 | 注释里写"避开了 API 26 的 `destroyForcibly()`"就以为安全 | **同一批还有 `waitFor(long, TimeUnit)`/`isAlive()`**。`desugar_jdk_libs` **不覆盖 `java.lang.Process`**。校验红线必须**剥离注释后**扫描真实调用 |
 | `catch (Exception e)` 当兜底 | `NoSuchMethodError` 是 `Error`，不是 `Exception`。任何"可能链接失败"的调用都要 `catch (Throwable)` |
 | 用 `pkill -f "sleep 30"` 清理残留 | `-f` 会匹配到**执行 pkill 的 bash 自身** → 把自己杀掉（exit 137）。必须用 `[s]leep 30` 规避 |
+| 用「刷屏时 `/proc/<pid>/stat` 的 CPU」验证渲染优化 | 解析和渲染**都在主线程**，采到的是两者之和。渲染只占一部分，相对改善被背景量淹没 → 必然得出「无效」的错误结论。必须隔离：静止画面下反复触发重绘 |
+| 不限速地连续发 `\e[C` 触发重绘 | Android 会把**同一帧内**的多次 `invalidate()` 合并成一次 `onDraw`。不限速测到的是「解析几千个光标移动 + 画很少几次」。每次之间 `sleep 5ms` |
+| 用 10ms 粒度（1 jiffy）采样却只跑 100ms | 只有 10 个刻度，噪声 ±1 = ±10%，实测波动可达 80%。单项必须跑够 ≥3 秒（≥300 jiffy） |
+| 判定 `isBlankForColumns()` 时只看 `decodeEffect()` | **`TERMINAL_BITMAP` 是 bit 15，而 `decodeEffect()` 只掩码 bit 0–8**，看不到位图标记；位图样式把 `(num,x,y)` 塞在颜色位里，可能正好等于默认前景/背景 → 整行被跳过、**Sixel 图片消失**。必须先 `isTerminalBitmap()` 显式排除 |
+| 凭代码推断「三次线性扫描 = O(n²) 是瓶颈」 | 实测写第 90 列 vs 第 2 列比值 ≈1.0。一行只有 100 列，扫描 100 个元素是纳秒级，相对每次写入的固定开销可忽略。**代码里看起来慢的，在真实数据量下未必慢；先测再改** |
+| 对比「短行 vs 长行」时只对齐字节数 | 还漏了两个变量：中文字数（长行 1.32x）和换行次数（短行 19x）。三者方向还互相矛盾。控制变量必须逐项核对，不能只挑一个看起来关键的 |
 
 ## 测试方法
 
@@ -159,6 +204,29 @@ unzip -o -q drawerlayout-1.2.0-sources.jar && grep -n -B4 -A12 setEdgeSize andro
 - **噪声认知**：跨轮 ±10%（温度/后台），同轮 <3%。验收跑两轮，提升必须超噪声
 - 性能改动纪律：先测量定位 → 最小改动 → 等价性验证 → 双轮实测，无效即撤
 - debug 包才能 logcat 调试；release 包 `/proc` 受 hidepid 限制、进程不可见
+
+### 采样终端 CPU 的正确姿势
+
+本机无 `adb`/`dumpsys gfxinfo`，只能用 `/proc/<pid>/stat`：
+
+```sh
+pid=$(pidof com.termux | awk '{print $1}')
+awk '{print $14 + $15}' /proc/$pid/stat   # utime+stime, 单位 jiffy
+```
+
+- 本机 `SC_CLK_TCK=100` → 1 jiffy = 10ms，**分辨率很粗**
+- 单项必须跑够 ≥3 秒（≥300 jiffy），否则噪声吞掉信号
+- 只能读到 `com.termux` **进程**的 CPU，含解析+渲染+UI，无法细分
+- **必须在真实终端里跑**：通过其他程序（如 opencode 的 shell）发送输出时，
+  Termux 不绘制，采到的 CPU 会是 0
+
+**隔离被测阶段**是这类测量的关键：
+
+| 想测 | 做法 |
+|---|---|
+| 纯渲染 | 先刷满屏，再**停止输出**，只反复触发重绘（`\e[C`/`\e[D`、`\e[5~`/`\e[6~`），每次 `sleep 5ms` 避开帧合并 |
+| 纯解析 | 固定字节数输出，对比「有无换行」「行长短」；每项总字节数必须相同 |
+| 单位成本 | 固定输出 500KB，算 ns/字节（ASCII 无换行实测 180 ns/字节 ≈ 5.6 MB/s）|
 
 ## 上游同步指南
 
