@@ -37,6 +37,16 @@ public final class TerminalRenderer {
 
     private final float[] asciiMeasures = new float[127];
 
+    /** Measured widths of non-ASCII code points, keyed by code point and stored as
+     *  {@link Float#floatToRawIntBits}. Without this, every CJK character calls
+     *  {@link Paint#measureText} on every frame (a JNI round trip per code point),
+     *  because {@link #asciiMeasures} only covers 0-126. Safe to key by code point alone:
+     *  this is a monospaced grid, so a glyph's advance does not depend on its neighbours.
+     *  The renderer is recreated whenever the typeface or text size changes
+     *  ({@code TerminalView.setTypeface}/{@code setTextSize}), so the cache can never
+     *  outlive the metrics it was measured with. */
+    private final android.util.SparseIntArray mCodePointWidthCache = new android.util.SparseIntArray();
+
     public TerminalRenderer(int textSize, Typeface typeface) {
         mTextSize = textSize;
         mTypeface = typeface;
@@ -130,8 +140,18 @@ public final class TerminalRenderer {
                 // This could happen for some fonts which are not truly monospace, or for more exotic characters such as
                 // smileys which android font renders as wide.
                 // If this is detected, we draw this code point scaled to match what wcwidth() expects.
-                final float measuredCodePointWidth = (codePoint < asciiMeasures.length) ? asciiMeasures[codePoint] : mTextPaint.measureText(line,
-                    currentCharIndex, charsForCodePoint);
+                final float measuredCodePointWidth;
+                if (codePoint < asciiMeasures.length) {
+                    measuredCodePointWidth = asciiMeasures[codePoint];
+                } else {
+                    final int cachedBits = mCodePointWidthCache.get(codePoint, 0);
+                    if (cachedBits != 0) {
+                        measuredCodePointWidth = Float.intBitsToFloat(cachedBits);
+                    } else {
+                        measuredCodePointWidth = mTextPaint.measureText(line, currentCharIndex, charsForCodePoint);
+                        mCodePointWidthCache.put(codePoint, Float.floatToRawIntBits(measuredCodePointWidth));
+                    }
+                }
                 final boolean fontWidthMismatch = Math.abs(measuredCodePointWidth / mFontWidth - codePointWcWidth) > 0.01;
 
                 // Only break the text run when the width-mismatch status *changes*.
