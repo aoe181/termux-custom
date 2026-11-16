@@ -1056,7 +1056,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             manageButton.setContentDescription(getString(R.string.tools_manage_mode_exit));
             manageButton.setColorFilter(
                 ContextCompat.getColor(this, android.R.color.holo_blue_light));
-            Logger.showToast(this, getString(R.string.tools_manage_mode_hint), false);
+            // No toast: the drawer title already shows the mode and how to leave it,
+            // and the button turning into a blue check mark says the same thing.
+            // Popping the identical sentence on top of that was just noise.
         } else {
             title.setText(R.string.tools_drawer_title);
             manageButton.setImageResource(R.drawable.ic_reorder);
