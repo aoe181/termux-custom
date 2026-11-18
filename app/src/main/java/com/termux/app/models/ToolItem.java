@@ -130,7 +130,7 @@ public class ToolItem {
 
     /** Default tools used on first run. */
     public static List<ToolItem> defaults() {        List<ToolItem> tools = new ArrayList<>();
-        tools.add(new ToolItem("同步索引", "⬇", "pkg update"));
+        tools.add(new ToolItem("更新检查", "📋", "pkg update && pkg list-upgradable"));
         tools.add(new ToolItem("up全部包", "⬆", "pkg upgrade"));
         tools.add(new ToolItem("切换源", "🔄", ToolItem.MIRROR_SWITCH_COMMAND));
         tools.add(new ToolItem("进程监视", "📊", "htop"));
