@@ -12,12 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout our repo (translation table)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: zh
 
       - name: Checkout termux-packages (htop recipe)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: termux/termux-packages
           path: tp
