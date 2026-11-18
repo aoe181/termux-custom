@@ -144,6 +144,11 @@ trace syscalls with strace	用 strace 跟踪系统调用
 wrap process command in multiple lines	进程命令多行显示
 set scheduling policy	设置调度策略
 show this help screen	显示此帮助页
+setup	设置
+quit	退出
+Arrows:	方向键:
+Digits:	数字键:
+Space:	空格:
 CPU usage bar:	CPU 使用条:
 Memory bar:	内存条:
 Swap bar:	交换条:
