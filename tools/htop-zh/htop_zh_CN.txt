@@ -43,6 +43,13 @@ PRIV	私有
 offline	离线
 # —— 进程状态 ——
 (zombie)	(僵尸)
+running	运行中
+unknown	未知
+# —— 仪表文本 ——
+thr	线程
+kthr	内核线程
+Swp	交换
+List	列表
 # —— 设置界面 ——
 Display options	显示选项
 Colors	配色
@@ -91,8 +98,77 @@ Sticky follow	粘滞跟随
 Show topology when selecting affinity by default	设置 CPU 亲和时默认显示拓扑
 - Show temperature in degree Fahrenheit instead of Celsius	- 温度用华氏度显示
 Also show CPU temperature	同时显示 CPU 温度
+Highlight out-dated/removed programs (red) / libraries (yellow)	高亮已过期/已移除的程序（红）/ 库（黄）
+Highlight program \"basename\"	高亮程序文件名
+Label CPUs based on SMT topology (e.g. 0a, 0b) instead of CPU index	按 SMT 拓扑标记 CPU（如 0a、0b）而非编号
+For current screen tab: \0	当前屏幕标签: \0
 # —— 输入提示 ——
 Search:	搜索:
 Filter:	过滤:
 # —— 对话框 ——
 Send signal:	发送信号:
+# —— 帮助页 (F1) ——
+hide/show header meters	显示/隐藏顶栏仪表
+switch to next screen tab	切换到下一个标签页
+scroll process list	滚动进程列表
+incremental PID search	增量 PID 搜索
+incremental name search	增量名称搜索
+incremental name filtering	增量名称过滤
+tree view	树状视图
+toggle program path	切换程序路径显示
+toggle merged command	切换合并命令显示
+pause/resume process updates	暂停/恢复进程刷新
+show processes of a single user	显示单个用户的进程
+hide/show user process threads	显示/隐藏用户进程线程
+hide/show kernel threads	显示/隐藏内核线程
+hide/show processes in containers	显示/隐藏容器中的进程
+cursor follows process	光标跟随进程
+expand/collapse tree/toggle all	展开/折叠树/全部切换
+sort by PID, CPU%, MEM% or TIME	按 PID、CPU%、内存%、时间 排序
+invert sort order	反转排序
+select sort column	选择排序列
+switch to previous screen tab	切换到上一个标签页
+tag process	标记进程
+tag process and its children	标记进程及其子进程
+untag all processes	取消全部标记
+kill process/tagged processes	结束进程/已标记进程
+higher priority (root only)	提高优先级（仅 root）
+lower priority (+ nice)	降低优先级（+ nice）
+set CPU affinity	设置 CPU 亲和性
+show process backtrace	显示进程调用栈
+show process environment	显示进程环境变量
+set IO priority	设置 IO 优先级
+list open files with lsof	用 lsof 列出打开的文件
+list file locks of process	列出进程的文件锁
+trace syscalls with strace	用 strace 跟踪系统调用
+wrap process command in multiple lines	进程命令多行显示
+set scheduling policy	设置调度策略
+show this help screen	显示此帮助页
+CPU usage bar:	CPU 使用条:
+Memory bar:	内存条:
+Swap bar:	交换条:
+low	低
+normal	普通
+kernel	内核
+irq	硬中断
+soft-irq	软中断
+steal	窃取
+guest	客户机
+io-wait	IO 等待
+virt	虚拟
+used	已用
+shared	共享
+compressed	压缩
+buffers	缓冲
+cache	缓存
+used%	已用%
+Process state:	进程状态:
+running;	运行中;
+sleeping;	睡眠;
+traced/stopped;	被跟踪/停止;
+zombie;	僵尸;
+total	总量
+disk sleep	磁盘睡眠
+Type and layout of header meters are configurable in the setup screen.	顶栏仪表的类型和布局可在设置界面配置。
+Press any key to return.	按任意键返回。
+Released under the GNU GPLv2+. See 'man' page for more info.	以 GNU GPLv2+ 许可发布，详见 man 手册。

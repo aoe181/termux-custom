@@ -40,6 +40,14 @@ jobs:
           # captions like 内存 are not cut mid-character.
           sed -i 's/int captionLen = 3;/int captionLen = 4;/' work/Meter.c
           sed -i 's/mvaddnstr(y, x, caption, captionLen);/mvaddnstr(y, x, caption, strlen(caption));/' work/Meter.c
+          # Function bar layout advances by strlen() (bytes): each CJK label
+          # wastes 2 columns and the bar overflows the screen (F9/F10 pushed
+          # off). Advance by UTF-8 display width instead: (bytes + chars) / 2.
+          sed -i 's|#include "FunctionBar.h"|#include "FunctionBar.h"\n#include <stdlib.h>|' work/FunctionBar.c
+          sed -i 's|x += strlen(this->keys.constKeys\[i\]);|x += ((int)strlen(this->keys.constKeys[i]) + (int)mbstowcs(NULL, this->keys.constKeys[i], 0)) / 2;|' work/FunctionBar.c
+          sed -i 's|x += strlen(this->functions\[i\]);|x += ((int)strlen(this->functions[i]) + (int)mbstowcs(NULL, this->functions[i], 0)) / 2;|' work/FunctionBar.c
+          sed -i 's|x += strlen(buffer);|x += ((int)strlen(buffer) + (int)mbstowcs(NULL, buffer, 0)) / 2;|' work/FunctionBar.c
+          sed -i 's|currentLen += strlen(buffer) + 1;|currentLen += ((int)strlen(buffer) + (int)mbstowcs(NULL, buffer, 0)) / 2 + 1;|' work/FunctionBar.c
           # -p1 patch: strip the pristine/work/ prefix components
           diff -ruN pristine work > zh-ui.patch || true
           test -s zh-ui.patch
