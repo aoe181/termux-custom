@@ -18,6 +18,15 @@ public class ToolItem {
     /** Mirror switch command marker: replaced at click time by an interactive mirror picker. */
     public static final String MIRROR_SWITCH_COMMAND = "@mirror_switch@";
 
+    /** A command wrapped in {@code @… @} is a built-in dialog launcher, not shell code:
+     *  the marker is routed at click time (e.g. {@link #MIRROR_SWITCH_COMMAND}). Editing
+     *  one would silently turn the button into a dead or dangerous shell command, so the
+     *  edit dialog freezes the command fields for these. */
+    public static boolean isSpecialCommand(String command) {
+        return command != null && command.length() > 2
+            && command.charAt(0) == '@' && command.charAt(command.length() - 1) == '@';
+    }
+
     public String id;
     public String name;
     /** Emoji or single character shown as the icon. */

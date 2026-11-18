@@ -37,6 +37,7 @@ import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.button.MaterialButton;
 import com.termux.R;
 import com.termux.app.api.file.FileReceiverActivity;
 import com.termux.app.models.ToolItem;
@@ -1047,10 +1048,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         TextView title = findViewById(R.id.tools_drawer_title);
         ImageButton manageButton = findViewById(R.id.tools_reorder_button);
+        // "Add tool" is an editing action, so it only shows in manage mode; in
+        // normal mode it would be a stray button below the grid.
+        MaterialButton addToolButton = findViewById(R.id.add_tool_button);
         if (mToolsManageMode) {
             title.setText(R.string.tools_manage_mode_hint);
             manageButton.setImageResource(R.drawable.ic_done);
             manageButton.setAlpha(1f);
+            addToolButton.setVisibility(View.VISIBLE);
             // The button now finishes the mode, so say so instead of repeating
             // "manage tools", which is what it did before.
             manageButton.setContentDescription(getString(R.string.tools_manage_mode_exit));
@@ -1063,6 +1068,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             title.setText(R.string.tools_drawer_title);
             manageButton.setImageResource(R.drawable.ic_reorder);
             manageButton.setAlpha(0.6f);
+            addToolButton.setVisibility(View.GONE);
             manageButton.setContentDescription(getString(R.string.tools_manage_mode));
             manageButton.clearColorFilter();
             // Persist the (possibly new) order on exit.
@@ -1151,6 +1157,20 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         checkInput.setMaxLines(2);
         container.addView(checkInput);
 
+        // Built-in tools like 切换源 route @…@ markers to dialog code instead of running
+        // shell. Editing that marker would silently break the button, so the command
+        // fields are frozen and the dialog says why instead of just ignoring taps.
+        final boolean commandLocked = !isNew && ToolItem.isSpecialCommand(tool.command);
+        if (commandLocked) {
+            commandInput.setEnabled(false);
+            checkInput.setEnabled(false);
+            TextView lockHint = new TextView(this);
+            lockHint.setTextSize(12);
+            lockHint.setText(R.string.tools_command_locked_hint);
+            lockHint.setPadding(0, pad / 2, 0, 0);
+            container.addView(lockHint);
+        }
+
         final AlertDialog dialog = new AlertDialog.Builder(this)
             .setTitle(isNew ? R.string.tools_new_title : R.string.tools_edit_title)
             .setView(container)
@@ -1169,6 +1189,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 // (it converts \n to \r) and run the command early, so trim the ends only.
                 String command = commandInput.getText().toString().trim();
                 String check = checkInput.getText().toString().trim();
+                // A locked built-in command keeps its marker no matter what: only the
+                // name and icon of such a tool are user-editable.
+                if (commandLocked) {
+                    command = tool.command;
+                    check = tool.checkCommand == null ? "" : tool.checkCommand;
+                }
                 if (name.isEmpty() || command.isEmpty()) {
                     Logger.showToast(this, getString(R.string.tools_empty_error), false);
                     return; // keep the dialog open with the input intact
