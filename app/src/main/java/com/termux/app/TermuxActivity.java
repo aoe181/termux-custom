@@ -1080,18 +1080,19 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     /** Show a dialog to pick an apt mirror, then switch sources.list and refresh the index. */
     private void showMirrorSwitchDialog() {
-        // URLs verified reachable (200) on device 2026-11: aliyun has NO /apt/ segment.
+        // URLs verified reachable (200) on device 2026-11: aliyun has NO /apt/ segment
+        // and the university mirrors have their own path layouts.
         final String[][] mirrors = {
             {"官方源 (termux.dev)", "https://packages.termux.dev/apt/termux-main"},
             {"清华源 (tuna)", "https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"},
             {"中科大源 (ustc)", "https://mirrors.ustc.edu.cn/termux/apt/termux-main"},
             {"阿里云源 (aliyun)", "https://mirrors.aliyun.com/termux/termux-main"},
+            {"南方科大 (sustech)", "https://mirrors.sustech.edu.cn/termux/apt/termux-main"},
+            {"重庆邮电 (cqupt)", "https://mirrors.cqupt.edu.cn/termux/termux-main"},
         };
-        String[] names = new String[mirrors.length];
-        for (int i = 0; i < mirrors.length; i++) names[i] = mirrors[i][0];
 
         // Match by host only (mirror paths differ), anchored on "deb" so comment
-        // URLs don't confuse detection.
+        // URLs don't confuse detection. The optional [...] part covers "deb [arch=…]".
         String currentHost = null;
         try {
             StringBuilder data = new StringBuilder();
@@ -1101,22 +1102,39 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     TermuxConstants.TERMUX_PREFIX_DIR_PATH + "/etc/apt/sources.list",
                     java.nio.charset.StandardCharsets.UTF_8, data, true) == null) {
                 java.util.regex.Matcher m = java.util.regex.Pattern
-                    .compile("deb\\s+https?://([^/ ]+)").matcher(data.toString());
-                if (m.find()) currentHost = m.group(1);
+                    .compile("deb\\s+(\\[[^]]*\\]\\s+)?https?://([^/ ]+)").matcher(data.toString());
+                if (m.find()) currentHost = m.group(2);
             }
         } catch (Exception ignored) {
         }
 
-        for (int i = 0; i < names.length; i++) {
-            if (currentHost != null && mirrors[i][1].contains("://" + currentHost + "/")) {
-                names[i] = names[i] + "  🟢";
+        boolean matchedKnown = false;
+        for (String[] mirror : mirrors) {
+            if (currentHost != null && mirror[1].contains("://" + currentHost + "/")) {
+                matchedKnown = true;
+                break;
             }
+        }
+        // A hand-edited sources.list pointing at a mirror outside this list used to lose
+        // the 🟢 entirely. The marker must always show what is active, so an unknown
+        // host gets its own read-only row instead of no marker at all.
+        final boolean unknownCurrent = currentHost != null && !matchedKnown;
+        final String[] names = new String[mirrors.length + (unknownCurrent ? 1 : 0)];
+        int row = 0;
+        if (unknownCurrent) names[row++] = "🟢 当前源 (" + currentHost + "，不在列表)";
+        for (int i = 0; i < mirrors.length; i++) {
+            names[row] = mirrors[i][0];
+            if (currentHost != null && mirrors[i][1].contains("://" + currentHost + "/"))
+                names[row] += "  🟢";
+            row++;
         }
 
         new AlertDialog.Builder(this)
             .setTitle(getString(R.string.tools_mirror_switch_title))
             .setItems(names, (dialog, which) -> {
-                String url = mirrors[which][1];
+                int idx = unknownCurrent ? which - 1 : which;
+                if (idx < 0) return; // read-only "current source" row
+                String url = mirrors[idx][1];
                 // Replace any termux-main URL regardless of path variant.
                 String cmd = "sed -i 's|https://[^ ]*termux-main|" + url + "|g' $PREFIX/etc/apt/sources.list && echo \"已切换到: " + url + "\" && pkg update";
                 // Route like every other tool: a busy TUI session would otherwise swallow
