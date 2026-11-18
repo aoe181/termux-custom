@@ -1,9 +1,8 @@
 name: Build Release APK
 
+# 改为仅手动触发（workflow_dispatch / gh workflow run release_build.yml）：
+# 之前每次 push master 都自动构建 APK，日常小改动也会白跑一轮。
 on:
-  push:
-    branches:
-      - master
   workflow_dispatch:
 
 permissions:

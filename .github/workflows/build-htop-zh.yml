@@ -35,6 +35,11 @@ jobs:
           tar -xzf htop-src.tar.gz -C pristine --strip-components=1
           tar -xzf htop-src.tar.gz -C work --strip-components=1
           python3 zh/tools/htop-zh/translate_htop.py zh/tools/htop-zh/htop_zh_CN.txt work
+          # Bar-mode meter captions reserve 3 columns/bytes ("Mem"). Widen the
+          # reservation to 4 columns and draw the full UTF-8 caption, so CJK
+          # captions like 内存 are not cut mid-character.
+          sed -i 's/int captionLen = 3;/int captionLen = 4;/' work/Meter.c
+          sed -i 's/mvaddnstr(y, x, caption, captionLen);/mvaddnstr(y, x, caption, strlen(caption));/' work/Meter.c
           # -p1 patch: strip the pristine/work/ prefix components
           diff -ruN pristine work > zh-ui.patch || true
           test -s zh-ui.patch

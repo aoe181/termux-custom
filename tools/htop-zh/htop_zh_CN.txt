@@ -38,20 +38,59 @@ SWAP	交换
 NLWP	线程
 Command	命令
 TTY	终端
-PRIORITY	优先级
-NICE	谦让值
-STATE	状态
+PRIV	私有
+# —— 其他可见文本 ——
+offline	离线
 # —— 进程状态 ——
 (zombie)	(僵尸)
 # —— 设置界面 ——
 Display options	显示选项
 Colors	配色
 Meters	仪表
+Screens	屏幕
+Screen tabs	屏幕标签
+Categories	分类
+Done	完成
 Available meters	可用仪表
 Available Columns	可用列
 Active Columns	当前列
 Header Layout	顶栏布局
 Header layout	顶栏布局
+Tree view	树状视图
+Global options:	全局选项:
+Show tabs for screens	显示屏幕标签页
+Shadow other users' processes	淡化其他用户的进程
+Hide kernel threads	隐藏内核线程
+Hide userland process threads	隐藏用户态线程
+Hide processes running in containers	隐藏容器中的进程
+Display threads in a different color	线程用不同颜色显示
+Show custom thread names	显示自定义线程名
+Show program path	显示程序路径
+Shadow distribution path prefixes	淡化发行版路径前缀
+Merge exe, comm and cmdline in Command	命令列合并显示 exe/comm/命令行
+- Try to find comm in cmdline (when Command is merged)	- 合并显示时在命令行中查找 comm
+- Try to strip exe from cmdline (when Command is merged)	- 合并显示时去掉命令行中的 exe 路径
+Highlight large numbers in memory counters	内存大数字高亮
+Leave a margin around header	顶栏四周留边
+Detailed CPU time (System/IO-Wait/Hard-IRQ/Soft-IRQ/Steal/Guest)	细分 CPU 时间（系统/IO 等待/硬中断/软中断/窃取/客户机）
+Count CPUs from 1 instead of 0	CPU 编号从 1 开始
+Update process names on every refresh	每次刷新更新进程名
+Add guest time in CPU meter percentage	CPU 仪表百分比计入客户机时间
+Also show CPU percentage numerically	同时以数字显示 CPU 百分比
+Also show CPU frequency	同时显示 CPU 频率
+Show cached memory in graph and bar modes	图形和条形模式显示缓存内存
+Enable the mouse	启用鼠标
+Update interval (in seconds)	刷新间隔（秒）
+Highlight new and old processes	高亮新旧进程
+- Highlight time (in seconds)	- 高亮持续时间（秒）
+Hide main function bar (0 - off, 1 - on ESC until next input, 2 - permanently)	隐藏底部功能栏（0=关，1=按 ESC 隐藏，2=永久）
+Sticky follow	粘滞跟随
+- Tree view is always sorted by PID (htop 2 behavior)	- 树状视图始终按 PID 排序（htop 2 行为）
+- Tree view is collapsed by default	- 树状视图默认折叠
+- Tree view is kept visually stable (0 - off, 1 - soft, 2 - hard)	- 树状视图保持视觉稳定（0=关，1=软，2=硬）
+Show topology when selecting affinity by default	设置 CPU 亲和时默认显示拓扑
+- Show temperature in degree Fahrenheit instead of Celsius	- 温度用华氏度显示
+Also show CPU temperature	同时显示 CPU 温度
 # —— 输入提示 ——
 Search:	搜索:
 Filter:	过滤:

@@ -29,9 +29,18 @@ def main():
     for f in sorted(list(src_dir.rglob("*.c")) + list(src_dir.rglob("*.h"))):
         text = f.read_text(encoding="utf-8")
         orig = text
+        # CategoriesPanel.c names are display-only setup page labels (never used
+        # for htoprc lookups), so they may be translated; everywhere else .name
+        # values are config lookup keys and must stay English.
+        guard = "" if f.name == "CategoriesPanel.c" else r"(?<!\.name = )"
         for en, zh in pairs:
             # "(\s*)EN(\s*)" keeps any alignment padding around the literal.
-            pat = re.compile(r'"(\s*)' + re.escape(en) + r'(\s*)"')
+            # The .name guard skips internal identifiers: htop resolves
+            # columns/meters/settings from htoprc BY .name, so translating those
+            # silently drops the entry from the user's layout (a missing meter
+            # or column looks exactly like "one item not displayed"). Only
+            # visible text (titles, labels, dialogs) may be translated.
+            pat = re.compile(guard + r'"(\s*)' + re.escape(en) + r'(\s*)"')
 
             def rep(m, zh=zh):
                 return '"' + m.group(1) + zh + m.group(2) + '"'
