@@ -46,6 +46,8 @@
     <string name="tools_icon_label">图标（emoji）</string>
     <string name="tools_command_label">命令</string>
     <string name="tools_command_locked_hint">内置功能，底层代码无法编辑</string>
+    <string name="tools_lock">锁定</string>
+    <string name="tools_unlock">解锁</string>
     <string name="tools_delete">删除</string>
     <string name="tools_save">保存</string>
     <string name="tools_cancel">取消</string>

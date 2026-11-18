@@ -64,6 +64,8 @@
     <string name="tools_icon_label">Icon (emoji)</string>
     <string name="tools_command_label">Command</string>
     <string name="tools_command_locked_hint">Built-in feature: the underlying code cannot be edited</string>
+    <string name="tools_lock">Lock</string>
+    <string name="tools_unlock">Unlock</string>
     <string name="tools_delete">Delete</string>
     <string name="tools_save">Save</string>
     <string name="tools_cancel">Cancel</string>

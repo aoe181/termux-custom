@@ -20,6 +20,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
@@ -1181,8 +1182,19 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             .setNegativeButton(R.string.tools_cancel, null)
             .create();
 
+        // Lock semantics: a locked tool refuses edits and deletion (mis-tap protection).
+        // "Lock" commits the current values first (behaves like Save + lock), while
+        // "unlock" only thaws the form inside this dialog, so Cancel after a mis-tap
+        // unlock keeps the lock on disk. One-element arrays because the listeners
+        // below mutate them.
+        final boolean[] locked = { !isNew && tool.locked };
+        final boolean[] commitOk = { false };
+
         dialog.setOnShowListener(d -> {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            final Button saveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            final Button deleteButton = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+
+            Runnable commit = () -> {
                 String name = nameInput.getText().toString().trim();
                 String icon = iconInput.getText().toString().trim();
                 // Trailing whitespace/newlines would make paste() emit extra Enter presses
@@ -1202,6 +1214,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 if (isNew) {
                     ToolItem t = new ToolItem(name, icon, command);
                     t.checkCommand = check;
+                    t.locked = locked[0];
                     mToolsAdapter.addTool(t);
                     // New tools are appended to the end; scroll so the user can see that it
                     // was actually added instead of staring at an unchanged grid.
@@ -1217,6 +1230,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                     tool.icon = icon;
                     tool.command = command;
                     tool.checkCommand = check;
+                    tool.locked = locked[0];
                     tool.state = null;
                     tool.startGraceUntil = 0;
                     // Clear any in-flight bookkeeping when a tool stops being a toggle
@@ -1233,17 +1247,59 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 if (!ToolStore.save(this, mToolsAdapter.getTools()))
                     Logger.showToast(this, getString(R.string.tools_save_failed), false);
                 refreshAllToggleStates();
+                commitOk[0] = true;
                 dialog.dismiss();
+            };
+
+            saveButton.setOnClickListener(v -> commit.run());
+
+            // The framework offers only three dialog button slots, so the lock button is
+            // appended to the button bar directly, sharing the row with delete/cancel/save.
+            final MaterialButton lockButton =
+                new MaterialButton(this, null, android.R.attr.buttonBarButtonStyle);
+            lockButton.setLayoutParams(new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            ((ViewGroup) saveButton.getParent()).addView(lockButton, 0);
+            // A brand new tool has nothing to lock yet; hidden like the delete button.
+            if (isNew) lockButton.setVisibility(View.GONE);
+
+            Runnable applyLockedUi = () -> {
+                boolean l = locked[0];
+                nameInput.setEnabled(!l);
+                iconInput.setEnabled(!l);
+                // A built-in @…@ command stays frozen even when unlocked.
+                commandInput.setEnabled(!l && !commandLocked);
+                checkInput.setEnabled(!l && !commandLocked);
+                saveButton.setEnabled(!l);
+                deleteButton.setEnabled(!l);
+                lockButton.setText(l ? R.string.tools_unlock : R.string.tools_lock);
+            };
+
+            lockButton.setOnClickListener(v -> {
+                if (locked[0]) {
+                    locked[0] = false; // in-dialog only; Cancel keeps the lock on disk
+                    applyLockedUi.run();
+                    return;
+                }
+                locked[0] = true;
+                commitOk[0] = false;
+                commit.run();
+                if (!commitOk[0]) {
+                    locked[0] = false; // validation failed, nothing was saved
+                    applyLockedUi.run();
+                }
             });
+
+            applyLockedUi.run();
 
             // Delete needs its own confirmation: a mis-tap would destroy the tool and its
             // command, which can be a long one-liner that is painful to retype.
             // A brand new tool has nothing to delete, so hide the button instead of
             // leaving a dead one on screen.
             if (isNew)
-                dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setVisibility(View.GONE);
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
-                if (isNew) return;
+                deleteButton.setVisibility(View.GONE);
+            deleteButton.setOnClickListener(v -> {
+                if (isNew || locked[0]) return; // locked tools cannot be deleted
                 new AlertDialog.Builder(this)
                     .setTitle(R.string.tools_delete)
                     .setMessage(getString(R.string.tools_delete_confirm, tool.name))

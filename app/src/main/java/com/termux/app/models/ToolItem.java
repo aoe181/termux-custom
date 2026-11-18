@@ -35,6 +35,8 @@ public class ToolItem {
     public String command;
     /** State-check command for "toggle" tools: exit code 0 = ON. Empty/null = normal command tool. */
     public String checkCommand;
+    /** Pinned tools refuse edits and deletion in the editor (mis-tap protection). */
+    public boolean locked;
     /** Runtime state cache for toggle tools: null = unknown, 0 = off, 1 = on. Not persisted. */
     public transient Integer state;
 
@@ -61,6 +63,7 @@ public class ToolItem {
     private static final String KEY_ICON = "icon";
     private static final String KEY_COMMAND = "command";
     private static final String KEY_CHECK_COMMAND = "checkCommand";
+    private static final String KEY_LOCKED = "locked";
 
     public boolean isToggle() {
         return checkCommand != null && !checkCommand.isEmpty();
@@ -73,6 +76,7 @@ public class ToolItem {
         o.put(KEY_ICON, icon);
         o.put(KEY_COMMAND, command);
         if (isToggle()) o.put(KEY_CHECK_COMMAND, checkCommand);
+        if (locked) o.put(KEY_LOCKED, true);
         return o;
     }
 
@@ -90,6 +94,7 @@ public class ToolItem {
 
         ToolItem t = new ToolItem(id, name, o.optString(KEY_ICON, "▶"), command);
         t.checkCommand = o.optString(KEY_CHECK_COMMAND, "");
+        t.locked = o.optBoolean(KEY_LOCKED, false);
         return t;
     }
 
