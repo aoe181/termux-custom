@@ -46,7 +46,11 @@ jobs:
         run: |
           set -e
           cd tp
-          ./scripts/run-docker.sh ./build-package.sh -a aarch64 htop
+          # -I: install prebuilt dependencies instead of building them. Building
+          # ncurses from source drags in terminfo sources from codeberg.org etc.,
+          # which the GitHub runners cannot always resolve. Only htop itself needs
+          # building - it is the thing we patch.
+          ./scripts/run-docker.sh ./build-package.sh -I -a aarch64 htop
 
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
