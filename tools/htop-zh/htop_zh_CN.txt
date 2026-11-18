@@ -1,0 +1,59 @@
+# htop 中文界面翻译表（构建时替换源码里的英文字符串）
+# 格式：英文原文<TAB>中文。替换保留字面量两侧的对齐空格，词条只写本体。
+# 只匹配完整 C 字符串字面量；单字母/过于通用的词条禁止入表（会全局误伤，如 "S"）。
+# 未命中的词条构建日志会列出，源码措辞变了就来这里改。
+#
+# —— 顶栏 ——
+Load average:	负载:
+Load average	负载
+Uptime:	运行时长:
+Uptime	运行时长
+Tasks:	进程:
+Tasks	进程
+# —— 仪表 ——
+Mem	内存
+Swap	交换
+Load:	负载:
+# —— 功能键菜单 ——
+Help	帮助
+Tree	树状
+Kill	结束
+Quit	退出
+Nice -	降优先
+Nice +	升优先
+Search	搜索
+SortBy	排序
+Setup	设置
+Filter	过滤
+# —— 列标题 ——
+VIRT	虚拟
+RES	常驻
+SHR	共享
+TIME+	时间+
+MEM%	内存%
+USER	用户
+PRI	优先
+NI	谦让
+SWAP	交换
+NLWP	线程
+Command	命令
+TTY	终端
+PRIORITY	优先级
+NICE	谦让值
+STATE	状态
+# —— 进程状态 ——
+(zombie)	(僵尸)
+# —— 设置界面 ——
+Display options	显示选项
+Colors	配色
+Meters	仪表
+Available meters	可用仪表
+Available Columns	可用列
+Active Columns	当前列
+Header Layout	顶栏布局
+Header layout	顶栏布局
+# —— 输入提示 ——
+Search:	搜索:
+Filter:	过滤:
+# —— 对话框 ——
+Send signal:	发送信号:
