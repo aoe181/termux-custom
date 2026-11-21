@@ -163,7 +163,15 @@ public class TerminalSixel {
         }
 
         if (mBitmap.getWidth() < mCurX + repeat) {
-            int newBitmapWidth = mCurX + repeat + SIXEL__BITMAP_RESIZE_EXTRA_DIMENSION;
+            // 几何增长:至少翻倍当前宽度,把整图拷贝次数从逐字节 O(n²) 降到 O(n);
+            // 先多走 +100 冗余确保至少覆盖本次未来数据。
+            int newBitmapWidth = Math.max(mCurX + repeat + SIXEL__BITMAP_RESIZE_EXTRA_DIMENSION,
+                    mBitmap.getWidth() * 2);
+            // 越过 MAX_BITMAP_SIZE 时回退到线性路径(比几何多走一步),避免把本可放下的图踢出去
+            if (newBitmapWidth * mBitmap.getHeight() * 4 > TerminalBitmap.MAX_BITMAP_SIZE) {
+                newBitmapWidth = Math.max(mCurX + repeat + SIXEL__BITMAP_RESIZE_EXTRA_DIMENSION,
+                        mBitmap.getWidth() + SIXEL__BITMAP_RESIZE_EXTRA_DIMENSION);
+            }
 
             if (newBitmapWidth < 0) {
                 Logger.logError(mClient, LOG_TAG, "The new sixel bitmap width overflowed: " +
@@ -178,8 +186,13 @@ public class TerminalSixel {
         }
 
         if (mBitmap.getHeight() < mCurY + SIXEL__LINE_LEN) {
-            // Very unlikely to resize both at the same time.
-            int newBitmapHeight = mCurY + SIXEL__BITMAP_RESIZE_EXTRA_DIMENSION;
+            // Very unlikely to resize both at the same time。同上:几何增长 + MAX 上限回退。
+            int newBitmapHeight = Math.max(mCurY + SIXEL__LINE_LEN + SIXEL__BITMAP_RESIZE_EXTRA_DIMENSION,
+                    mBitmap.getHeight() * 2);
+            if (newBitmapHeight * mBitmap.getWidth() * 4 > TerminalBitmap.MAX_BITMAP_SIZE) {
+                newBitmapHeight = Math.max(mCurY + SIXEL__LINE_LEN + SIXEL__BITMAP_RESIZE_EXTRA_DIMENSION,
+                        mBitmap.getHeight() + SIXEL__BITMAP_RESIZE_EXTRA_DIMENSION);
+            }
 
             if (newBitmapHeight < 0) {
                 Logger.logError(mClient, LOG_TAG, "The new sixel bitmap height overflowed: " +

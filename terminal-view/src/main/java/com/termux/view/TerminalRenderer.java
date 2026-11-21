@@ -47,6 +47,13 @@ public final class TerminalRenderer {
      *  outlive the metrics it was measured with. */
     private final android.util.SparseIntArray mCodePointWidthCache = new android.util.SparseIntArray();
 
+    // Sixel 位图连续 run 合并(减少 drawBitmap 数量和 Rect/RectF 分配):
+    // 一张位图跨行画,逐 cell 画 = O(cell) drawBitmap,合并连续 cell = O(行) drawBitmap。
+    // 跨终端行、遇非位图 cell 或位图消失时 flush。
+    private Bitmap bmpRunBitmap;
+    private int bmpRunX0, bmpRunY0, bmpRunLen, bmpRunStartCol;
+    private float bmpRunTop, bmpRunCellW, bmpRunCellH;
+
     public TerminalRenderer(int textSize, Typeface typeface) {
         mTextSize = textSize;
         mTypeface = typeface;
@@ -86,6 +93,9 @@ public final class TerminalRenderer {
         float heightOffset = mFontLineSpacingAndAscent;
         for (int row = topRow; row < endRow; row++) {
             heightOffset += mFontLineSpacing;
+
+            // 上一行未 flush 的位图 run 结束
+            flushSixelRun(canvas);
 
             final int cursorX = (row == cursorRow && cursorVisible) ? cursorCol : -1;
             int selx1 = -1, selx2 = -1;
@@ -129,12 +139,35 @@ public final class TerminalRenderer {
                 if (TextStyle.isTerminalBitmap(style)) {
                     Bitmap bitmap = mEmulator.getScreen().getSixelBitmap(style);
                     if (bitmap != null) {
-                        float left = column * mFontWidth;
-                        float top = heightOffset - mFontLineSpacing;
-                        Rect bitmapSrcRect = mEmulator.getScreen().getSixelRect(style);
-                        RectF bitmapDestRect = new RectF(left, top, left + mFontWidth, top + mFontLineSpacing);
-                        canvas.drawBitmap(bitmap, bitmapSrcRect, bitmapDestRect, null);
+                        int bx = TextStyle.getTerminalBitmapX(style);
+                        int by = TextStyle.getTerminalBitmapY(style);
+                        // 连续同位图且与前一 cell 相邻、不跨行时跨进 run;否则 flush 旧 run 重开。
+                        if (bmpRunLen == 0 || bmpRunBitmap != bitmap
+                                || bmpRunX0 + bmpRunLen != bx || bmpRunY0 != by) {
+                            flushSixelRun(canvas);
+                            bmpRunBitmap = bitmap;
+                            bmpRunX0 = bx; bmpRunY0 = by;
+                            bmpRunLen = 1;
+                            bmpRunStartCol = column;
+                            bmpRunTop = heightOffset - mFontLineSpacing;
+                            Rect runRect = mEmulator.getScreen().getSixelRect(style);
+                            bmpRunCellW = runRect.width();
+                            bmpRunCellH = runRect.height();
+                        } else {
+                            bmpRunLen++;
+                        }
+                        column += 1;
+                        measuredWidthForRun = 0.f;
+                        lastRunStyle = 0;
+                        lastRunInsideCursor = false;
+                        lastRunStartColumn = column + 1;
+                        lastRunStartIndex = currentCharIndex;
+                        lastRunFontWidthMismatch = false;
+                        currentCharIndex += charsForCodePoint;
+                        continue;
                     }
+                    // 位图数据丢了(GC/清屏):run 中断,flush 之前连续的 run,此 cell 按空 cell 处理。
+                    flushSixelRun(canvas);
                     column += 1;
                     measuredWidthForRun = 0.f;
                     lastRunStyle = 0;
@@ -145,6 +178,8 @@ public final class TerminalRenderer {
                     currentCharIndex += charsForCodePoint;
                     continue;
                 }
+                // 非位图 cell:位图 run 结束
+                flushSixelRun(canvas);
                 final int codePointWcWidth = WcWidth.width(codePoint);
                 final boolean insideCursor = (cursorX == column || (codePointWcWidth == 2 && cursorX == column + 1));
                 final boolean insideSelection = column >= selx1 && column <= selx2;
@@ -217,6 +252,23 @@ public final class TerminalRenderer {
             drawTextRun(canvas, line, palette, heightOffset, lastRunStartColumn, columnWidthSinceLastRun, lastRunStartIndex, charsSinceLastRun,
                 measuredWidthForRun, cursorColor, cursorShape, lastRunStyle, reverseVideo || invertCursorTextColor || lastRunInsideSelection);
         }
+
+        // 行尾仍挂着的位图 run
+        flushSixelRun(canvas);
+    }
+
+    /**
+     * 合并一条连续位图 run 的 drawBitmap:一次调用画整行区间,而不是逐 cell。
+     * srcRect = run 中拼接后的 bitmap 区域,destRect = 屏上的行区域(同当前逐 cell 画法一致)。
+     */
+    private void flushSixelRun(Canvas canvas) {
+        if (bmpRunLen <= 0 || bmpRunBitmap == null) return;
+        Rect srcRect = new Rect((int) (bmpRunX0 * bmpRunCellW), (int) (bmpRunY0 * bmpRunCellH),
+                (int) ((bmpRunX0 + bmpRunLen) * bmpRunCellW), (int) ((bmpRunY0 + 1) * bmpRunCellH));
+        RectF destRect = new RectF(bmpRunStartCol * mFontWidth, bmpRunTop,
+                (bmpRunStartCol + bmpRunLen) * mFontWidth, bmpRunTop + mFontLineSpacing);
+        canvas.drawBitmap(bmpRunBitmap, srcRect, destRect, null);
+        bmpRunLen = 0;
     }
 
     private void drawTextRun(Canvas canvas, char[] text, int[] palette, float y, int startColumn, int runWidthColumns,
